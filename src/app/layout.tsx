@@ -13,8 +13,8 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "Next.js Template",
-  description: "A minimal Next.js starter template",
+  title: "MaxX Tech - WhatsApp Bot",
+  description: "WhatsApp bot with rich and multiple features",
 };
 
 export default function RootLayout({
