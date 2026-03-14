@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server';
-import makeWASocket, { DisconnectReason, initAuthCreds, proto } from '@whiskeysockets/baileys';
+import makeWASocket, { initAuthCreds } from '@whiskeysockets/baileys';
 import { MongoClient } from 'mongodb';
 import fs from 'fs';
 import path from 'path';
@@ -17,8 +17,6 @@ async function getDb() {
   return client.db(DB_NAME);
 }
 
-const activeSockets: Map<string, any> = new Map();
-
 function createAuthDir(phone: string): string {
   const authDir = path.join(process.cwd(), 'auth', phone);
   if (!fs.existsSync(authDir)) {
@@ -27,46 +25,35 @@ function createAuthDir(phone: string): string {
   return authDir;
 }
 
-async function loadAuthState(phone: string) {
+function loadOrCreateCreds(phone: string) {
   const authDir = createAuthDir(phone);
-  
   const credsFile = path.join(authDir, 'creds.json');
-  const keysDir = path.join(authDir, 'keys');
   
-  let creds: any = initAuthCreds();
+  let creds = initAuthCreds();
   
   if (fs.existsSync(credsFile)) {
     try {
-      const credsData = fs.readFileSync(credsFile, 'utf-8');
-      creds = JSON.parse(credsData);
-      console.log('[AUTH] Loaded existing credentials for', phone);
+      const data = fs.readFileSync(credsFile, 'utf-8');
+      creds = { ...creds, ...JSON.parse(data) };
     } catch (e) {
-      console.log('[AUTH] Failed to load creds, creating new');
+      console.log('[CREDS] Failed to load, using new');
     }
   }
   
-  return {
-    creds,
-    keys: {}
-  };
+  return creds;
 }
 
-async function saveAuthState(phone: string, creds: any) {
+function saveCreds(phone: string, creds: any) {
   const authDir = createAuthDir(phone);
   const credsFile = path.join(authDir, 'creds.json');
-  
-  try {
-    fs.writeFileSync(credsFile, JSON.stringify(creds, null, 2));
-    console.log('[AUTH] Saved credentials for', phone);
-  } catch (e) {
-    console.error('[AUTH] Failed to save creds:', e);
-  }
+  fs.writeFileSync(credsFile, JSON.stringify(creds, null, 2));
 }
 
 export async function POST(request: Request) {
   try {
     const db = await getDb();
     const logsCollection = db.collection('logs');
+    
     const { phone } = await request.json();
     
     if (!phone) {
@@ -76,99 +63,52 @@ export async function POST(request: Request) {
     const cleanPhone = phone.replace(/[^\d]/g, '');
     const fullPhone = cleanPhone.startsWith('+') ? cleanPhone : `+${cleanPhone}`;
 
-    console.log('[PAIR] Starting pairing for:', fullPhone);
+    console.log('[PAIR] Generating code for:', fullPhone);
 
-    if (activeSockets.has(cleanPhone)) {
-      console.log('[PAIR] Closing existing socket');
-      try {
-        activeSockets.get(cleanPhone).end({ reason: 'New pairing request' });
-      } catch {}
-      activeSockets.delete(cleanPhone);
-    }
+    await logsCollection.insertOne({
+      phone: cleanPhone,
+      event: 'pairing_started',
+      timestamp: new Date()
+    });
 
-    const authState = await loadAuthState(cleanPhone);
+    const creds = loadOrCreateCreds(cleanPhone);
 
     const sock = makeWASocket({
-      auth: authState as any,
-      printQRInTerminal: true,
+      auth: { 
+        creds, 
+        keys: {
+          get: async () => ({}),
+          set: async () => {}
+        }
+      },
+      printQRInTerminal: false,
       browser: ['MAXX-XMD', 'Chrome', '120.0.0'],
-      connectTimeoutMs: 60000,
-      keepAliveIntervalMs: 30000,
     });
 
-    activeSockets.set(cleanPhone, sock);
-
-    sock.ev.on('creds.update', async (creds: any) => {
-      await saveAuthState(cleanPhone, { ...authState.creds, ...creds });
+    sock.ev.on('creds.update', (newCreds) => {
+      const updated = { ...creds, ...newCreds };
+      saveCreds(cleanPhone, updated);
     });
 
-    sock.ev.on('connection.update', async (update) => {
-      const { connection, lastDisconnect, qr } = update;
-      
+    sock.ev.on('connection.update', (update) => {
+      const { connection } = update;
       console.log('[PAIR] Connection:', connection);
       
-      if (qr) {
-        console.log('[PAIR] QR Code received (not using QR pairing)');
-      }
-
       if (connection === 'close') {
-        const reason = (lastDisconnect?.error as any)?.output?.statusCode;
-        console.log('[PAIR] Connection closed, reason:', reason);
-        
-        await logsCollection.insertOne({
-          phone: cleanPhone,
-          event: 'connection_close',
-          reason: reason,
-          timestamp: new Date()
-        });
-      }
-
-      if (connection === 'open') {
-        console.log('[PAIR] Connected to WhatsApp!');
-        
-        await logsCollection.insertOne({
-          phone: cleanPhone,
-          event: 'connected',
-          timestamp: new Date()
-        });
+        console.log('[PAIR] Connection closed (expected in serverless)');
       }
     });
 
-    sock.ev.on('messages.upsert', async ({ messages, type }) => {
-      if (type === 'notify') {
-        for (const msg of messages) {
-          if (!msg.key.fromMe && msg.message) {
-            console.log('[MSG] From:', msg.key.remoteJid);
-            
-            await logsCollection.insertOne({
-              phone: cleanPhone,
-              event: 'message',
-              from: msg.key.remoteJid,
-              message: msg.message?.conversation || msg.message?.extendedTextMessage?.text || 'media',
-              timestamp: new Date()
-            });
-
-            const chatId = msg.key.remoteJid as string;
-            const response = "🤖 MAXX-XMD Bot Connected!\n\nI'm your AI assistant. How can I help you today?";
-            
-            await sock.sendMessage(chatId, { text: response });
-          }
-        }
-      }
-    });
-
-    await new Promise((resolve) => setTimeout(resolve, 8000));
+    await new Promise(resolve => setTimeout(resolve, 3000));
 
     if (!sock.authState?.creds) {
-      throw new Error('Failed to initialize socket properly');
+      throw new Error('Failed to initialize');
     }
 
-    console.log('[PAIR] Requesting pairing code...');
-    
-    const code = await sock.requestPairingCode(fullPhone);
+    const code = await (sock as any).requestPairingCode(fullPhone);
     const formattedCode = code.match(/.{1,4}/g)?.join('-') || code;
 
-    console.log('[PAIR] Success! Code:', formattedCode);
+    console.log('[PAIR] Code:', formattedCode);
 
     await logsCollection.insertOne({
       phone: cleanPhone,
@@ -177,24 +117,28 @@ export async function POST(request: Request) {
       timestamp: new Date()
     });
 
+    try {
+      sock.end(undefined);
+    } catch {}
+
     return NextResponse.json({ 
       success: true, 
       pairingCode: formattedCode,
-      phone: fullPhone,
-      message: 'Enter this code on WhatsApp'
+      phone: fullPhone
     });
 
   } catch (error: any) {
     console.error('[PAIR] Error:', error);
     
-    const db = await getDb();
-    const logsCollection = db.collection('logs');
-    await logsCollection.insertOne({
-      event: 'pairing_error',
-      error: error.message,
-      stack: error.stack,
-      timestamp: new Date()
-    });
+    try {
+      const db = await getDb();
+      const logsCollection = db.collection('logs');
+      await logsCollection.insertOne({
+        event: 'pairing_error',
+        error: error.message,
+        timestamp: new Date()
+      });
+    } catch {}
     
     return NextResponse.json({ 
       error: error.message || 'Failed to generate pairing code' 
@@ -203,6 +147,5 @@ export async function POST(request: Request) {
 }
 
 export async function GET() {
-  const phones = Array.from(activeSockets.keys());
-  return NextResponse.json({ active: phones });
+  return NextResponse.json({ status: 'ok' });
 }
