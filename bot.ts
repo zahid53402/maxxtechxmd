@@ -1,11 +1,17 @@
 import makeWASocket, { DisconnectReason } from '@whiskeysockets/baileys';
-import fs from 'fs';
-import path from 'path';
 import { MongoClient } from 'mongodb';
 
 const MONGO_URI = process.env.MONGO_URI || 'mongodb+srv://maxxbot:maxxbot2020@clustersessions.pcz8pqh.mongodb.net/maxx-xmd?retryWrites=true&w=majority';
-const mongoClient = new MongoClient(MONGO_URI);
 
+const SESSION_ID = process.env.SESSION_ID;
+
+if (!SESSION_ID) {
+  console.error('[BOT] Please set SESSION_ID environment variable');
+  console.log('[BOT] Usage: SESSION_ID=your-session-id bun run bot');
+  process.exit(1);
+}
+
+const mongoClient = new MongoClient(MONGO_URI);
 let db: any;
 
 async function connectDb() {
@@ -14,149 +20,142 @@ async function connectDb() {
   console.log('[DB] Connected to MongoDB');
 }
 
-function loadCreds(phone: string) {
-  const credsPath = path.join(process.cwd(), 'auth', phone, 'creds.json');
-  if (fs.existsSync(credsPath)) {
-    return JSON.parse(fs.readFileSync(credsPath, 'utf-8'));
-  }
-  return null;
-}
-
-function saveCreds(phone: string, creds: any) {
-  const authDir = path.join(process.cwd(), 'auth', phone);
-  if (!fs.existsSync(authDir)) {
-    fs.mkdirSync(authDir, { recursive: true });
-  }
-  fs.writeFileSync(path.join(authDir, 'creds.json'), JSON.stringify(creds, null, 2));
-}
-
 async function startBot() {
   await connectDb();
-  const logsCollection = db.collection('logs');
   const sessionsCollection = db.collection('sessions');
 
-  const sessions = await sessionsCollection.find({}).toArray();
+  const session = await sessionsCollection.findOne({ sessionId: SESSION_ID });
   
-  if (sessions.length === 0) {
-    console.log('[BOT] No sessions found. Use the web interface to pair a device first.');
-    return;
+  if (!session) {
+    console.error('[BOT] Session not found. Please generate a session first on the web.');
+    console.log('[BOT] Make sure SESSION_ID is correct');
+    process.exit(1);
   }
 
-  for (const session of sessions) {
-    const phone = session.phone;
-    console.log(`[BOT] Starting bot for ${phone}...`);
+  console.log(`[BOT] Starting bot for ${session.phone}...`);
+  console.log(`[BOT] Session ID: ${SESSION_ID}`);
 
-    const creds = loadCreds(phone);
-    if (!creds) {
-      console.log(`[BOT] No credentials found for ${phone}, skipping...`);
-      continue;
+  if (!session.creds) {
+    console.error('[BOT] No credentials found. Please pair your device first.');
+    process.exit(1);
+  }
+
+  const creds = session.creds;
+  const logsCollection = db.collection('logs');
+
+  const sock = makeWASocket({
+    auth: {
+      creds,
+      keys: {
+        get: async () => ({}),
+        set: async () => {}
+      }
+    },
+    printQRInTerminal: true,
+    browser: ['MAXX-XMD Bot', 'Chrome', '120.0.0'],
+  });
+
+  sock.ev.on('creds.update', async (newCreds) => {
+    const updated = { ...creds, ...newCreds };
+    await sessionsCollection.updateOne(
+      { sessionId: SESSION_ID },
+      { $set: { creds: updated, updatedAt: new Date() } }
+    );
+    console.log('[BOT] Credentials updated');
+  });
+
+  sock.ev.on('connection.update', async (update) => {
+    const { connection, lastDisconnect } = update;
+    
+    if (connection === 'open') {
+      console.log('[BOT] Connected to WhatsApp!');
+      await logsCollection.insertOne({
+        sessionId: SESSION_ID,
+        phone: session.phone,
+        event: 'bot_connected',
+        timestamp: new Date()
+      });
     }
 
-    const sock = makeWASocket({
-      auth: {
-        creds,
-        keys: {
-          get: async () => ({}),
-          set: async () => {}
-        }
-      },
-      printQRInTerminal: true,
-      browser: ['MAXX-XMD Bot', 'Chrome', '120.0.0'],
-    });
-
-    sock.ev.on('creds.update', (newCreds) => {
-      const updated = { ...creds, ...newCreds };
-      saveCreds(phone, updated);
-    });
-
-    sock.ev.on('connection.update', async (update) => {
-      const { connection, lastDisconnect } = update;
+    if (connection === 'close') {
+      const reason = (lastDisconnect?.error as any)?.output?.statusCode;
+      console.log(`[BOT] Disconnected: ${reason}`);
       
-      if (connection === 'open') {
-        console.log(`[BOT] Connected to WhatsApp! (${phone})`);
-        await logsCollection.insertOne({
-          phone,
-          event: 'bot_connected',
-          timestamp: new Date()
-        });
+      await logsCollection.insertOne({
+        sessionId: SESSION_ID,
+        phone: session.phone,
+        event: 'bot_disconnected',
+        reason,
+        timestamp: new Date()
+      });
+
+      if (reason !== DisconnectReason.loggedOut) {
+        console.log('[BOT] Reconnecting in 5 seconds...');
+        setTimeout(() => startBot(), 5000);
       }
+    }
+  });
 
-      if (connection === 'close') {
-        const reason = (lastDisconnect?.error as any)?.output?.statusCode;
-        console.log(`[BOT] Disconnected (${reason})`);
-        
-        await logsCollection.insertOne({
-          phone,
-          event: 'bot_disconnected',
-          reason,
-          timestamp: new Date()
-        });
+  sock.ev.on('messages.upsert', async ({ messages, type }) => {
+    if (type !== 'notify') return;
 
-        if (reason !== DisconnectReason.loggedOut) {
-          console.log('[BOT] Reconnecting...');
-        }
-      }
-    });
+    for (const msg of messages) {
+      if (!msg.message || msg.key.fromMe) continue;
 
-    sock.ev.on('messages.upsert', async ({ messages, type }) => {
-      if (type !== 'notify') return;
+      const from = msg.key.remoteJid as string;
+      const text = msg.message?.conversation || msg.message?.extendedTextMessage?.text || '';
+      
+      console.log(`[MSG] From ${from}: ${text}`);
 
-      for (const msg of messages) {
-        if (!msg.message || msg.key.fromMe) continue;
+      await logsCollection.insertOne({
+        sessionId: SESSION_ID,
+        phone: session.phone,
+        event: 'message_received',
+        from,
+        text,
+        timestamp: new Date()
+      });
 
-        const from = msg.key.remoteJid as string;
-        const text = msg.message?.conversation || msg.message?.extendedTextMessage?.text || '';
-        
-        console.log(`[MSG] From ${from}: ${text}`);
+      const response = generateResponse(text);
+      
+      await sock.sendMessage(from, { text: response });
 
-        await logsCollection.insertOne({
-          phone,
-          event: 'message_received',
-          from,
-          text,
-          timestamp: new Date()
-        });
-
-        const response = await generateAIResponse(text, from);
-        
-        await sock.sendMessage(from, { text: response });
-
-        await logsCollection.insertOne({
-          phone,
-          event: 'message_sent',
-          to: from,
-          text: response,
-          timestamp: new Date()
-        });
-      }
-    });
-  }
+      await logsCollection.insertOne({
+        sessionId: SESSION_ID,
+        phone: session.phone,
+        event: 'message_sent',
+        to: from,
+        text: response,
+        timestamp: new Date()
+      });
+    }
+  });
 }
 
-async function generateAIResponse(message: string, from: string): Promise<string> {
+function generateResponse(message: string): string {
   const lower = message.toLowerCase();
 
-  if (lower.includes('hello') || lower.includes('hi') || lower.includes('hey')) {
-    return "Hello! 👋 I'm MAXX-XMD Bot. How can I help you today?";
+  const responses: Record<string, string> = {
+    'hello': "Hello! 👋 I'm MAXX-XMD Bot. How can I help you today?",
+    'hi': "Hello! 👋 I'm MAXX-XMD Bot. How can I help you today?",
+    'hey': "Hello! 👋 I'm MAXX-XMD Bot. How can I help you today?",
+    'help': "I'm here to help! Just send me a message and I'll respond.",
+    'who are you': "I'm MAXX-XMD Bot, an AI-powered WhatsApp bot. I can chat with you!",
+    'time': `The current time is ${new Date().toLocaleTimeString()}`,
+    'date': `Today's date is ${new Date().toLocaleDateString()}`,
+    'menu': "Available commands:\n- hello/hi/hey - Greet me\n- help - Get help\n- who are you - About me\n- time - Get current time\n- date - Get current date",
+  };
+
+  for (const [key, value] of Object.entries(responses)) {
+    if (lower.includes(key)) {
+      return value;
+    }
   }
 
-  if (lower.includes('help')) {
-    return "I'm here to help! Just send me a message and I'll respond. What would you like to know?";
-  }
-
-  if (lower.includes('who are you')) {
-    return "I'm MAXX-XMD Bot, an AI-powered WhatsApp bot. I can chat with you, answer questions, and more!";
-  }
-
-  if (lower.includes('time')) {
-    return `The current time is ${new Date().toLocaleTimeString()}`;
-  }
-
-  if (lower.includes('date')) {
-    return `Today's date is ${new Date().toLocaleDateString()}`;
-  }
-
-  return `Thanks for your message: "${message}"!\n\nI'm MAXX-XMD Bot. You can ask me anything or just chat. 😊`;
+  return `Thanks for your message: "${message}"!\n\nI'm MAXX-XMD Bot. Type "menu" for available commands. 😊`;
 }
+
+console.log('[BOT] Starting MAXX-XMD Bot...');
+console.log(`[BOT] Session ID: ${SESSION_ID}`);
 
 startBot().catch(console.error);

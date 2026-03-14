@@ -1,44 +1,32 @@
 import { NextResponse } from 'next/server';
 import makeWASocket, { initAuthCreds } from '@whiskeysockets/baileys';
-import fs from 'fs';
-import path from 'path';
+import { MongoClient, ObjectId } from 'mongodb';
+import crypto from 'crypto';
 
-function createAuthDir(phone: string): string {
-  const authDir = path.join(process.cwd(), 'auth', phone);
-  if (!fs.existsSync(authDir)) {
-    fs.mkdirSync(authDir, { recursive: true });
+let client: MongoClient | null = null;
+
+async function getDb() {
+  const MONGO_URI = process.env.MONGO_URI || 'mongodb+srv://maxxbot:maxxbot2020@clustersessions.pcz8pqh.mongodb.net/maxx-xmd?retryWrites=true&w=majority';
+  const DB_NAME = process.env.MONGO_DB || 'maxx-xmd';
+  
+  if (!client) {
+    client = new MongoClient(MONGO_URI);
+    await client.connect();
   }
-  return authDir;
+  return client.db(DB_NAME);
 }
 
-function loadOrCreateCreds(phone: string) {
-  const authDir = createAuthDir(phone);
-  const credsFile = path.join(authDir, 'creds.json');
-  
-  let creds = initAuthCreds();
-  
-  if (fs.existsSync(credsFile)) {
-    try {
-      const data = fs.readFileSync(credsFile, 'utf-8');
-      creds = { ...creds, ...JSON.parse(data) };
-    } catch (e) {
-      console.log('[CREDS] Failed to load, using new');
-    }
-  }
-  
-  return creds;
-}
-
-function saveCreds(phone: string, creds: any) {
-  const authDir = createAuthDir(phone);
-  const credsFile = path.join(authDir, 'creds.json');
-  fs.writeFileSync(credsFile, JSON.stringify(creds, null, 2));
+function generateSessionId(): string {
+  return crypto.randomBytes(8).toString('hex');
 }
 
 export async function POST(request: Request) {
   let sock: any = null;
   
   try {
+    const db = await getDb();
+    const sessionsCollection = db.collection('sessions');
+    
     const { phone } = await request.json();
     
     if (!phone) {
@@ -48,9 +36,16 @@ export async function POST(request: Request) {
     const cleanPhone = phone.replace(/[^\d]/g, '');
     const fullPhone = cleanPhone.startsWith('+') ? cleanPhone : `+${cleanPhone}`;
 
-    console.log('[PAIR] Generating code for:', fullPhone);
+    console.log('[PAIR] Generating for:', fullPhone);
 
-    const creds = loadOrCreateCreds(cleanPhone);
+    const existingSession = await sessionsCollection.findOne({ phone: cleanPhone, active: true });
+    let sessionId = existingSession?.sessionId;
+
+    if (!sessionId) {
+      sessionId = generateSessionId();
+    }
+
+    const creds = existingSession?.creds || initAuthCreds();
 
     sock = makeWASocket({
       auth: {
@@ -64,9 +59,12 @@ export async function POST(request: Request) {
       browser: ['MAXX-XMD', 'Chrome', '120.0.0'],
     });
 
-    sock.ev.on('creds.update', (newCreds: any) => {
+    sock.ev.on('creds.update', async (newCreds: any) => {
       const updated = { ...creds, ...newCreds };
-      saveCreds(cleanPhone, updated);
+      await sessionsCollection.updateOne(
+        { sessionId },
+        { $set: { creds: updated, updatedAt: new Date() } }
+      );
     });
 
     await new Promise(resolve => setTimeout(resolve, 5000));
@@ -74,12 +72,31 @@ export async function POST(request: Request) {
     const code = await sock.requestPairingCode(fullPhone);
     const formattedCode = code.match(/.{1,4}/g)?.join('-') || code;
 
-    console.log('[PAIR] Code generated:', formattedCode);
+    await sessionsCollection.updateOne(
+      { sessionId },
+      {
+        $set: {
+          phone: cleanPhone,
+          fullPhone,
+          creds,
+          sessionId,
+          active: true,
+          createdAt: new Date(),
+          updatedAt: new Date()
+        },
+        $setOnInsert: { _id: new ObjectId() }
+      },
+      { upsert: true }
+    );
+
+    console.log('[PAIR] Session:', sessionId, 'Code:', formattedCode);
 
     return NextResponse.json({
       success: true,
       pairingCode: formattedCode,
-      phone: fullPhone
+      phone: fullPhone,
+      sessionId,
+      instructions: 'Use this Session ID to deploy your bot on any platform'
     });
 
   } catch (error: any) {
@@ -96,5 +113,8 @@ export async function POST(request: Request) {
 }
 
 export async function GET() {
-  return NextResponse.json({ status: 'ok' });
+  return NextResponse.json({ 
+    status: 'ok',
+    usage: 'POST with { phone: "+1234567890" } to get pairing code and session ID'
+  });
 }

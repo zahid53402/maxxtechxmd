@@ -11,6 +11,7 @@ export default function Home() {
   const [error, setError] = useState("");
   const [pairingCode, setPairingCode] = useState("");
   const [phoneNumber, setPhoneNumber] = useState("");
+  const [sessionId, setSessionId] = useState("");
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -33,6 +34,7 @@ export default function Home() {
       if (data.success && data.pairingCode) {
         setPairingCode(data.pairingCode);
         setPhoneNumber(data.phone);
+        setSessionId(data.sessionId || '');
         setStep("pairing");
       } else {
         setStep("error");
@@ -45,6 +47,10 @@ export default function Home() {
     }
   };
 
+  const copySessionId = () => {
+    navigator.clipboard.writeText(sessionId);
+  };
+
   const reset = () => {
     setStep("input");
     setPhone("");
@@ -52,6 +58,7 @@ export default function Home() {
     setError("");
     setPairingCode("");
     setPhoneNumber("");
+    setSessionId("");
   };
 
   return (
@@ -163,6 +170,20 @@ export default function Home() {
               </div>
               <p className="text-white text-xl font-bold mb-2">Connected!</p>
               <p className="text-gray-400 mb-4">{message}</p>
+              
+              {sessionId && (
+                <div className="bg-[#1a1a2e] rounded-xl p-4 mb-4 border border-cyan-500/30">
+                  <p className="text-gray-400 text-sm mb-2">Your Session ID</p>
+                  <p className="text-xl font-mono text-cyan-400">{sessionId}</p>
+                  <button 
+                    onClick={copySessionId}
+                    className="mt-2 px-4 py-1 bg-cyan-600 hover:bg-cyan-500 text-white text-sm rounded-lg transition"
+                  >
+                    Copy
+                  </button>
+                </div>
+              )}
+              
               <button 
                 onClick={reset}
                 className="px-6 py-2 bg-gray-800 hover:bg-gray-700 text-gray-300 rounded-lg transition"
