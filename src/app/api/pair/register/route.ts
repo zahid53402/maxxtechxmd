@@ -36,7 +36,7 @@ export async function POST(request: Request) {
     const cleanPhone = phone.replace(/[^\d]/g, '');
     const fullPhone = cleanPhone.startsWith('+') ? cleanPhone : `+${cleanPhone}`;
 
-    console.log('[PAIR] Generating for:', fullPhone);
+    console.log('[PAIR] Starting for:', fullPhone);
 
     const existingSession = await sessionsCollection.findOne({ phone: cleanPhone, active: true });
     let sessionId = existingSession?.sessionId;
@@ -46,9 +46,8 @@ export async function POST(request: Request) {
     }
 
     const creds = existingSession?.creds || initAuthCreds();
-
     let connected = false;
-    let pairingCodeGenerated = false;
+    let connectionError = '';
 
     sock = makeWASocket({
       auth: {
@@ -64,7 +63,6 @@ export async function POST(request: Request) {
 
     sock.ev.on('creds.update', async (newCreds: any) => {
       const updated = { ...creds, ...newCreds };
-      console.log('[PAIR] Creds updated, saving...');
       await sessionsCollection.updateOne(
         { sessionId },
         { $set: { creds: updated, updatedAt: new Date() } }
@@ -72,31 +70,33 @@ export async function POST(request: Request) {
     });
 
     sock.ev.on('connection.update', async (update: any) => {
-      const { connection } = update;
-      console.log('[PAIR] Connection:', connection);
+      const { connection, lastDisconnect } = update;
+      console.log('[PAIR] Connection update:', connection);
       
       if (connection === 'open') {
         connected = true;
-        console.log('[PAIR] Connected to WhatsApp!');
+      }
+      
+      if (connection === 'close') {
+        connectionError = lastDisconnect?.error?.message || 'Connection closed';
       }
     });
 
-    // Wait for connection first
-    console.log('[PAIR] Waiting for connection...');
-    await new Promise(resolve => setTimeout(resolve, 8000));
+    // Wait for connection
+    await new Promise(resolve => setTimeout(resolve, 10000));
 
     if (!connected) {
-      throw new Error('Failed to connect to WhatsApp');
+      console.log('[PAIR] Connection failed:', connectionError);
+      return NextResponse.json({
+        error: `Failed to connect to WhatsApp: ${connectionError || 'Timeout'}. Your hosting may have network restrictions.`
+      }, { status: 500 });
     }
 
-    // Now request pairing code
-    console.log('[PAIR] Requesting pairing code...');
+    console.log('[PAIR] Connected, getting code...');
+
     const code = await sock.requestPairingCode(fullPhone);
     const formattedCode = code.match(/.{1,4}/g)?.join('-') || code;
 
-    console.log('[PAIR] Code:', formattedCode);
-
-    // Save session with current creds
     await sessionsCollection.updateOne(
       { sessionId },
       {
@@ -114,14 +114,13 @@ export async function POST(request: Request) {
       { upsert: true }
     );
 
-    console.log('[PAIR] Session saved:', sessionId);
+    console.log('[PAIR] Done! Session:', sessionId);
 
     return NextResponse.json({
       success: true,
       pairingCode: formattedCode,
       phone: fullPhone,
-      sessionId,
-      instructions: 'Use this Session ID to deploy your bot'
+      sessionId
     });
 
   } catch (error: any) {
@@ -138,8 +137,5 @@ export async function POST(request: Request) {
 }
 
 export async function GET() {
-  return NextResponse.json({ 
-    status: 'ok',
-    usage: 'POST with { phone: "+1234567890" } to get pairing code and session ID'
-  });
+  return NextResponse.json({ status: 'ok' });
 }
