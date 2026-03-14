@@ -47,6 +47,9 @@ export async function POST(request: Request) {
 
     const creds = existingSession?.creds || initAuthCreds();
 
+    let connected = false;
+    let pairingCodeGenerated = false;
+
     sock = makeWASocket({
       auth: {
         creds,
@@ -61,17 +64,39 @@ export async function POST(request: Request) {
 
     sock.ev.on('creds.update', async (newCreds: any) => {
       const updated = { ...creds, ...newCreds };
+      console.log('[PAIR] Creds updated, saving...');
       await sessionsCollection.updateOne(
         { sessionId },
         { $set: { creds: updated, updatedAt: new Date() } }
       );
     });
 
-    await new Promise(resolve => setTimeout(resolve, 5000));
+    sock.ev.on('connection.update', async (update: any) => {
+      const { connection } = update;
+      console.log('[PAIR] Connection:', connection);
+      
+      if (connection === 'open') {
+        connected = true;
+        console.log('[PAIR] Connected to WhatsApp!');
+      }
+    });
 
+    // Wait for connection first
+    console.log('[PAIR] Waiting for connection...');
+    await new Promise(resolve => setTimeout(resolve, 8000));
+
+    if (!connected) {
+      throw new Error('Failed to connect to WhatsApp');
+    }
+
+    // Now request pairing code
+    console.log('[PAIR] Requesting pairing code...');
     const code = await sock.requestPairingCode(fullPhone);
     const formattedCode = code.match(/.{1,4}/g)?.join('-') || code;
 
+    console.log('[PAIR] Code:', formattedCode);
+
+    // Save session with current creds
     await sessionsCollection.updateOne(
       { sessionId },
       {
@@ -89,14 +114,14 @@ export async function POST(request: Request) {
       { upsert: true }
     );
 
-    console.log('[PAIR] Session:', sessionId, 'Code:', formattedCode);
+    console.log('[PAIR] Session saved:', sessionId);
 
     return NextResponse.json({
       success: true,
       pairingCode: formattedCode,
       phone: fullPhone,
       sessionId,
-      instructions: 'Use this Session ID to deploy your bot on any platform'
+      instructions: 'Use this Session ID to deploy your bot'
     });
 
   } catch (error: any) {

@@ -1,4 +1,4 @@
-import makeWASocket, { DisconnectReason } from '@whiskeysockets/baileys';
+import makeWASocket, { DisconnectReason, initAuthCreds } from '@whiskeysockets/baileys';
 import { MongoClient } from 'mongodb';
 
 const MONGO_URI = process.env.MONGO_URI || 'mongodb+srv://maxxbot:maxxbot2020@clustersessions.pcz8pqh.mongodb.net/maxx-xmd?retryWrites=true&w=majority';
@@ -24,24 +24,32 @@ async function startBot() {
   await connectDb();
   const sessionsCollection = db.collection('sessions');
 
+  console.log(`[BOT] Looking for session: ${SESSION_ID}`);
+  
   const session = await sessionsCollection.findOne({ sessionId: SESSION_ID });
   
   if (!session) {
-    console.error('[BOT] Session not found. Please generate a session first on the web.');
-    console.log('[BOT] Make sure SESSION_ID is correct');
+    console.error('[BOT] Session not found in MongoDB!');
+    console.log('[BOT] Please generate a session first on the web.');
+    console.log('[BOT] Make sure SESSION_ID is correct and matches.');
     process.exit(1);
   }
 
-  console.log(`[BOT] Starting bot for ${session.phone}...`);
-  console.log(`[BOT] Session ID: ${SESSION_ID}`);
+  console.log(`[BOT] Session found for phone: ${session.phone}`);
+  console.log(`[BOT] Has creds: ${!!session.creds}`);
 
   if (!session.creds) {
-    console.error('[BOT] No credentials found. Please pair your device first.');
+    console.error('[BOT] No credentials found! Please pair your device first.');
+    console.log('[BOT] Go to the web app, enter your number and get a new pairing code.');
     process.exit(1);
   }
 
+  console.log(`[BOT] Creds keys: ${Object.keys(session.creds).join(', ')}`);
+  
   const creds = session.creds;
   const logsCollection = db.collection('logs');
+
+  console.log('[BOT] Creating socket...');
 
   const sock = makeWASocket({
     auth: {
@@ -53,6 +61,7 @@ async function startBot() {
     },
     printQRInTerminal: true,
     browser: ['MAXX-XMD Bot', 'Chrome', '120.0.0'],
+    connectTimeoutMs: 60000,
   });
 
   sock.ev.on('creds.update', async (newCreds) => {
@@ -61,14 +70,18 @@ async function startBot() {
       { sessionId: SESSION_ID },
       { $set: { creds: updated, updatedAt: new Date() } }
     );
-    console.log('[BOT] Credentials updated');
+    console.log('[BOT] Credentials updated in MongoDB');
   });
 
   sock.ev.on('connection.update', async (update) => {
-    const { connection, lastDisconnect } = update;
+    const { connection, lastDisconnect, qr } = update;
+    
+    if (qr) {
+      console.log('[BOT] QR Code received (will not use - using creds)');
+    }
     
     if (connection === 'open') {
-      console.log('[BOT] Connected to WhatsApp!');
+      console.log('[BOT] ✅ Connected to WhatsApp!');
       await logsCollection.insertOne({
         sessionId: SESSION_ID,
         phone: session.phone,
@@ -79,7 +92,7 @@ async function startBot() {
 
     if (connection === 'close') {
       const reason = (lastDisconnect?.error as any)?.output?.statusCode;
-      console.log(`[BOT] Disconnected: ${reason}`);
+      console.log(`[BOT] Connection closed: ${reason}`);
       
       await logsCollection.insertOne({
         sessionId: SESSION_ID,
@@ -92,6 +105,8 @@ async function startBot() {
       if (reason !== DisconnectReason.loggedOut) {
         console.log('[BOT] Reconnecting in 5 seconds...');
         setTimeout(() => startBot(), 5000);
+      } else {
+        console.log('[BOT] Logged out! Need to re-pair device.');
       }
     }
   });
@@ -155,7 +170,9 @@ function generateResponse(message: string): string {
   return `Thanks for your message: "${message}"!\n\nI'm MAXX-XMD Bot. Type "menu" for available commands. 😊`;
 }
 
-console.log('[BOT] Starting MAXX-XMD Bot...');
+console.log('========================================');
+console.log('[BOT] Starting MAXX-XMD Bot');
 console.log(`[BOT] Session ID: ${SESSION_ID}`);
+console.log('========================================');
 
 startBot().catch(console.error);
