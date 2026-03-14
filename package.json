@@ -11,7 +11,8 @@
     "start": "next start",
     "lint": "eslint",
     "typecheck": "tsc --noEmit",
-    "bot": "tsx bot.ts"
+    "bot": "tsx bot.ts",
+    "pair": "tsx pair.ts"
   },
   "dependencies": {
     "@hapi/boom": "^10.0.1",
