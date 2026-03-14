@@ -5,10 +5,8 @@ services:
     region: oregon
     buildCommand: npm install && npm run build
     startCommand: npm run start
-    disk:
-      name: sessions
-      mountPath: /app/sessions
-      sizeGB: 1
     envVars:
       - key: NODE_VERSION
         value: "20"
+      - key: MONGO_URI
+        value: "mongodb+srv://maxxbot:masharia2020@clustersessions.pcz8pqh.mongodb.net/maxx-xmd?retryWrites=true&w=majority"

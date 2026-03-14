@@ -1,28 +1,33 @@
 import { NextResponse } from 'next/server';
 import makeWASocket, { DisconnectReason, useMultiFileAuthState } from '@whiskeysockets/baileys';
 import { Boom } from '@hapi/boom';
-import { existsSync, mkdirSync } from 'fs';
+import { MongoClient, ObjectId } from 'mongodb';
 
-const SESSION_DIR = process.env.RENDER ? '/app/sessions' : './sessions';
+const MONGO_URI = process.env.MONGO_URI || 'mongodb+srv://maxxbot:masharia2020@clustersessions.pcz8pqh.mongodb.net/maxx-xmd?retryWrites=true&w=majority';
 
-function ensureSessionDir() {
-  if (!existsSync(SESSION_DIR)) {
-    mkdirSync(SESSION_DIR, { recursive: true });
+let client: MongoClient | null = null;
+
+async function getDb() {
+  if (!client) {
+    client = new MongoClient(MONGO_URI);
+    await client.connect();
   }
+  return client.db();
 }
 
 interface PairingSession {
   phone: string;
   socket: any;
   connected: boolean;
-  pairingCode?: string;
+  creds?: any;
 }
 
 const activeSessions: Map<string, PairingSession> = new Map();
 
 export async function POST(request: Request) {
   try {
-    ensureSessionDir();
+    const db = await getDb();
+    const sessionsCollection = db.collection('sessions');
     
     const { phone } = await request.json();
     
@@ -42,10 +47,20 @@ export async function POST(request: Request) {
       activeSessions.delete(cleanPhone);
     }
 
-    const { state, saveCreds } = await useMultiFileAuthState(`${SESSION_DIR}/${cleanPhone}`);
+    const existingSession = await sessionsCollection.findOne({ phone: cleanPhone });
+    
+    let authState: any;
+    if (existingSession && existingSession.creds) {
+      authState = {
+        creds: existingSession.creds,
+        keys: {}
+      };
+    } else {
+      authState = { creds: {}, keys: {} };
+    }
 
     const sock = makeWASocket({
-      auth: state,
+      auth: authState,
       printQRInTerminal: false,
       browser: ['MaxX Tech', 'Chrome', '120.0.0'],
       logger: console as any,
@@ -54,19 +69,23 @@ export async function POST(request: Request) {
     const sessionData: PairingSession = { 
       phone: cleanPhone, 
       socket: sock, 
-      connected: false 
+      connected: false,
+      creds: authState.creds
     };
     activeSessions.set(cleanPhone, sessionData);
 
-    sock.ev.on('creds.update', saveCreds);
+    sock.ev.on('creds.update', async (creds: any) => {
+      sessionData.creds = { ...sessionData.creds, ...creds };
+      await sessionsCollection.updateOne(
+        { phone: cleanPhone },
+        { $set: { phone: cleanPhone, creds: sessionData.creds, updatedAt: new Date() } },
+        { upsert: true }
+      );
+    });
 
     sock.ev.on('connection.update', (update) => {
-      const { connection, lastDisconnect, qr } = update;
+      const { connection, lastDisconnect } = update;
       
-      if (qr) {
-        console.log('QR received');
-      }
-
       if (connection === 'close') {
         const reason = (lastDisconnect?.error as Boom)?.output?.statusCode;
         if (reason !== DisconnectReason.loggedOut) {

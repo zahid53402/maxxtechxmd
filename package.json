@@ -17,6 +17,7 @@
     "@whiskeysockets/baileys": "^7.0.0-rc.9",
     "baileys": "^7.0.0-rc.9",
     "jimp": "^1.6.0",
+    "mongodb": "^7.1.0",
     "next": "^16.1.3",
     "qrcode": "^1.5.4",
     "react": "^19.2.3",
