@@ -28,6 +28,7 @@ export default function Home() {
       });
 
       const data = await res.json();
+      console.log('Response:', data);
 
       if (data.success && data.pairingCode) {
         setPairingCode(data.pairingCode);
@@ -39,20 +40,10 @@ export default function Home() {
         setError(data.error || "Failed to generate pairing code");
       }
     } catch (err) {
+      console.error('Error:', err);
       setStep("error");
       setError("Failed to connect to server");
     }
-  };
-
-  const checkConnection = async () => {
-    try {
-      const res = await fetch('/api/pair/register', { method: 'GET' });
-      const data = await res.json();
-      if (data.sessions?.some((s: any) => s.phone === phoneNumber && s.connected)) {
-        setStep("success");
-        setMessage("Successfully connected to WhatsApp!");
-      }
-    } catch {}
   };
 
   const reset = () => {
@@ -65,114 +56,123 @@ export default function Home() {
   };
 
   return (
-    <main className="min-h-screen bg-gradient-to-br from-gray-900 via-purple-900 to-gray-900 flex flex-col items-center justify-center p-4">
-      <div className="max-w-md w-full bg-gray-800/50 backdrop-blur-xl rounded-3xl p-8 shadow-2xl border border-gray-700">
+    <main className="min-h-screen bg-gradient-to-b from-purple-900 via-purple-800 to-purple-900 flex flex-col items-center justify-center p-4">
+      <div className="max-w-md w-full">
         <div className="text-center mb-8">
-          <h1 className="text-3xl font-bold text-white mb-2">MaxX Tech</h1>
-          <p className="text-gray-400">WhatsApp Bot</p>
+          <h1 className="text-4xl font-bold text-white mb-2">MAXX-XMD</h1>
+          <p className="text-white/80">Link your WhatsApp to get your own bot</p>
         </div>
 
-        {step === "input" && (
-          <form onSubmit={handleSubmit} className="flex flex-col items-center">
-            <div className="w-full mb-6">
-              <label className="text-gray-400 text-sm mb-2 block">Your WhatsApp Number</label>
-              <input
-                type="tel"
-                value={phone}
-                onChange={(e) => setPhone(e.target.value)}
-                placeholder="+1234567890"
-                className="w-full px-4 py-3 bg-gray-900/50 border border-gray-600 rounded-xl text-white text-lg focus:outline-none focus:border-purple-500 text-center"
-                required
-              />
-              <p className="text-gray-500 text-xs mt-2 text-center">Include country code (e.g., +1 for US)</p>
+        <div className="bg-white/10 backdrop-blur-lg rounded-2xl p-6 shadow-2xl border border-white/20">
+          <div className="flex items-center justify-center gap-4 mb-6">
+            <div className={`flex items-center gap-2 ${step === 'input' ? 'text-white' : 'text-white/50'}`}>
+              <span className="w-8 h-8 rounded-full bg-white/20 flex items-center justify-center text-white font-bold">1</span>
+              <span>Enter Number</span>
             </div>
-
-            <button 
-              type="submit"
-              className="w-full px-6 py-3 bg-purple-600 hover:bg-purple-700 text-white rounded-xl transition font-medium"
-            >
-              Generate Pairing Code
-            </button>
-          </form>
-        )}
-
-        {step === "generating" && (
-          <div className="flex flex-col items-center">
-            <div className="w-16 h-16 border-4 border-purple-500 border-t-transparent rounded-full animate-spin mb-6"></div>
-            <p className="text-white text-lg mb-2">{message}</p>
-            <p className="text-gray-400 text-sm">Please wait...</p>
+            <div className="h-px w-8 bg-white/30"></div>
+            <div className={`flex items-center gap-2 ${step === 'pairing' ? 'text-white' : 'text-white/50'}`}>
+              <span className="w-8 h-8 rounded-full bg-white/20 flex items-center justify-center text-white font-bold">2</span>
+              <span>Link Device</span>
+            </div>
+            <div className="h-px w-8 bg-white/30"></div>
+            <div className={`flex items-center gap-2 ${step === 'success' ? 'text-white' : 'text-white/50'}`}>
+              <span className="w-8 h-8 rounded-full bg-white/20 flex items-center justify-center text-white font-bold">3</span>
+              <span>Complete</span>
+            </div>
           </div>
-        )}
 
-        {step === "pairing" && (
-          <div className="flex flex-col items-center">
-            <p className="text-white text-lg mb-4">Enter this code on WhatsApp</p>
-            
-            <div className="bg-gray-900/80 rounded-2xl p-6 mb-6 border border-purple-500/50">
-              <p className="text-purple-400 text-sm text-center mb-2">{phoneNumber}</p>
-              <p className="text-5xl font-mono font-bold text-white text-center tracking-widest">
-                {pairingCode}
-              </p>
-            </div>
+          {step === "input" && (
+            <form onSubmit={handleSubmit}>
+              <div className="mb-4">
+                <label className="text-white/80 text-sm mb-2 block">Your WhatsApp Number</label>
+                <input
+                  type="tel"
+                  value={phone}
+                  onChange={(e) => setPhone(e.target.value)}
+                  placeholder="254725979273"
+                  className="w-full px-4 py-3 bg-white/10 border border-white/20 rounded-xl text-white placeholder-white/50 focus:outline-none focus:border-white/50 text-center text-lg"
+                  required
+                />
+                <p className="text-white/60 text-xs mt-2 text-center">Country code + number, no + or spaces</p>
+              </div>
 
-            <div className="flex gap-3">
               <button 
-                onClick={checkConnection}
-                className="px-6 py-3 bg-green-600 hover:bg-green-700 text-white rounded-xl transition font-medium"
+                type="submit"
+                className="w-full px-6 py-3 bg-gradient-to-r from-purple-600 to-pink-600 hover:from-purple-700 hover:to-pink-700 text-white rounded-xl transition font-medium"
               >
-                Check Connection
+                Get Pairing Code
               </button>
+            </form>
+          )}
+
+          {step === "generating" && (
+            <div className="flex flex-col items-center py-8">
+              <div className="w-12 h-12 border-4 border-white/30 border-t-white rounded-full animate-spin mb-4"></div>
+              <p className="text-white text-lg">{message}</p>
+            </div>
+          )}
+
+          {step === "pairing" && (
+            <div className="text-center">
+              <p className="text-white/80 mb-4">Enter this code on WhatsApp</p>
+              
+              <div className="bg-white/10 rounded-xl p-4 mb-4 border border-white/20">
+                <p className="text-white/60 text-sm mb-2">{phoneNumber}</p>
+                <p className="text-4xl font-mono font-bold text-white tracking-widest">
+                  {pairingCode}
+                </p>
+              </div>
+
               <button 
                 onClick={reset}
-                className="px-6 py-3 bg-gray-600 hover:bg-gray-700 text-white rounded-xl transition font-medium"
+                className="px-6 py-2 bg-white/10 hover:bg-white/20 text-white rounded-lg transition text-sm"
               >
                 Cancel
               </button>
-            </div>
 
-            <p className="text-gray-400 text-sm mt-4 text-center">
-              Open WhatsApp → Settings → Linked Devices → Link a Device<br/>
-              Enter the code above to connect
-            </p>
-          </div>
-        )}
-
-        {step === "success" && (
-          <div className="flex flex-col items-center">
-            <div className="w-20 h-20 bg-green-500/20 rounded-full flex items-center justify-center mb-6">
-              <span className="text-4xl">✓</span>
+              <p className="text-white/60 text-xs mt-4">
+                WhatsApp → Settings → Linked Devices → Link a Device
+              </p>
             </div>
-            <p className="text-white text-xl font-bold mb-2">Connected!</p>
-            <p className="text-gray-400 text-center mb-6">{message}</p>
-            <button 
-              onClick={reset}
-              className="px-6 py-3 bg-purple-600 hover:bg-purple-700 text-white rounded-xl transition font-medium"
-            >
-              Connect Another Number
-            </button>
-          </div>
-        )}
+          )}
 
-        {step === "error" && (
-          <div className="flex flex-col items-center">
-            <div className="w-20 h-20 bg-red-500/20 rounded-full flex items-center justify-center mb-6">
-              <span className="text-4xl">✕</span>
+          {step === "success" && (
+            <div className="text-center">
+              <div className="w-16 h-16 bg-green-500/20 rounded-full flex items-center justify-center mx-auto mb-4">
+                <span className="text-3xl">✓</span>
+              </div>
+              <p className="text-white text-xl font-bold mb-2">Connected!</p>
+              <p className="text-white/80 mb-4">{message}</p>
+              <button 
+                onClick={reset}
+                className="px-6 py-2 bg-white/10 hover:bg-white/20 text-white rounded-lg transition"
+              >
+                Connect Another
+              </button>
             </div>
-            <p className="text-white text-xl font-bold mb-2">Connection Failed</p>
-            <p className="text-red-400 text-center mb-6">{error}</p>
-            <button 
-              onClick={reset}
-              className="px-6 py-3 bg-purple-600 hover:bg-purple-700 text-white rounded-xl transition font-medium"
-            >
-              Try Again
-            </button>
-          </div>
-        )}
+          )}
+
+          {step === "error" && (
+            <div className="text-center">
+              <div className="w-16 h-16 bg-red-500/20 rounded-full flex items-center justify-center mx-auto mb-4">
+                <span className="text-3xl">✕</span>
+              </div>
+              <p className="text-white text-xl font-bold mb-2">Failed</p>
+              <p className="text-red-300 text-sm mb-4">{error}</p>
+              <button 
+                onClick={reset}
+                className="px-6 py-2 bg-white/10 hover:bg-white/20 text-white rounded-lg transition"
+              >
+                Try Again
+              </button>
+            </div>
+          )}
+        </div>
+
+        <div className="text-center mt-6 text-white/60 text-sm">
+          Powered by MAXX-XMD • GitHub
+        </div>
       </div>
-
-      <footer className="mt-12 text-gray-500 text-sm">
-        Powered by MaxX Tech
-      </footer>
     </main>
   );
 }
