@@ -1,6 +1,8 @@
 import { NextResponse } from 'next/server';
-import makeWASocket, { AuthenticationState, initAuthCreds } from '@whiskeysockets/baileys';
-import { MongoClient, Binary } from 'mongodb';
+import makeWASocket, { DisconnectReason, initAuthCreds, proto } from '@whiskeysockets/baileys';
+import { MongoClient } from 'mongodb';
+import fs from 'fs';
+import path from 'path';
 
 let client: MongoClient | null = null;
 
@@ -15,44 +17,56 @@ async function getDb() {
   return client.db(DB_NAME);
 }
 
-function convertBuffers(obj: any): any {
-  if (obj === null || obj === undefined) return obj;
-  if (obj instanceof Binary) return obj.buffer;
-  if (Buffer.isBuffer(obj)) return obj;
-  if (Array.isArray(obj)) return obj.map(convertBuffers);
-  if (typeof obj === 'object') {
-    const converted: any = {};
-    for (const key of Object.keys(obj)) {
-      converted[key] = convertBuffers(obj[key]);
-    }
-    return converted;
+const activeSockets: Map<string, any> = new Map();
+
+function createAuthDir(phone: string): string {
+  const authDir = path.join(process.cwd(), 'auth', phone);
+  if (!fs.existsSync(authDir)) {
+    fs.mkdirSync(authDir, { recursive: true });
   }
-  return obj;
+  return authDir;
 }
 
-const pendingPairing: Map<string, { socket: any; timeout: NodeJS.Timeout }> = new Map();
-const connectedDevices: Map<string, { phone: string; connected: boolean }> = new Map();
-
-function createAuthState(creds?: any): { state: AuthenticationState; saveCreds: () => Promise<void> } {
-  const credsObj = creds ? convertBuffers(creds) : initAuthCreds();
+async function loadAuthState(phone: string) {
+  const authDir = createAuthDir(phone);
+  
+  const credsFile = path.join(authDir, 'creds.json');
+  const keysDir = path.join(authDir, 'keys');
+  
+  let creds: any = initAuthCreds();
+  
+  if (fs.existsSync(credsFile)) {
+    try {
+      const credsData = fs.readFileSync(credsFile, 'utf-8');
+      creds = JSON.parse(credsData);
+      console.log('[AUTH] Loaded existing credentials for', phone);
+    } catch (e) {
+      console.log('[AUTH] Failed to load creds, creating new');
+    }
+  }
   
   return {
-    state: {
-      creds: credsObj,
-      keys: {
-        get: async () => ({}),
-        set: async () => {},
-      }
-    },
-    saveCreds: async () => {}
+    creds,
+    keys: {}
   };
+}
+
+async function saveAuthState(phone: string, creds: any) {
+  const authDir = createAuthDir(phone);
+  const credsFile = path.join(authDir, 'creds.json');
+  
+  try {
+    fs.writeFileSync(credsFile, JSON.stringify(creds, null, 2));
+    console.log('[AUTH] Saved credentials for', phone);
+  } catch (e) {
+    console.error('[AUTH] Failed to save creds:', e);
+  }
 }
 
 export async function POST(request: Request) {
   try {
     const db = await getDb();
-    const sessionsCollection = db.collection('sessions');
-    
+    const logsCollection = db.collection('logs');
     const { phone } = await request.json();
     
     if (!phone) {
@@ -62,99 +76,126 @@ export async function POST(request: Request) {
     const cleanPhone = phone.replace(/[^\d]/g, '');
     const fullPhone = cleanPhone.startsWith('+') ? cleanPhone : `+${cleanPhone}`;
 
-    console.log('[PAIR] Generating pairing code for:', fullPhone);
+    console.log('[PAIR] Starting pairing for:', fullPhone);
 
-    if (pendingPairing.has(cleanPhone)) {
-      const existing = pendingPairing.get(cleanPhone);
-      if (existing) {
-        try {
-          existing.socket.end(undefined);
-        } catch {}
-        clearTimeout(existing.timeout);
-      }
-      pendingPairing.delete(cleanPhone);
+    if (activeSockets.has(cleanPhone)) {
+      console.log('[PAIR] Closing existing socket');
+      try {
+        activeSockets.get(cleanPhone).end({ reason: 'New pairing request' });
+      } catch {}
+      activeSockets.delete(cleanPhone);
     }
 
-    const existingSession = await sessionsCollection.findOne({ phone: cleanPhone });
-    
-    let authState: { state: AuthenticationState; saveCreds: () => Promise<void> };
-    if (existingSession && existingSession.creds) {
-      console.log('[PAIR] Using existing credentials');
-      authState = createAuthState(existingSession.creds);
-    } else {
-      console.log('[PAIR] Creating new credentials');
-      authState = createAuthState();
-    }
+    const authState = await loadAuthState(cleanPhone);
 
     const sock = makeWASocket({
-      auth: authState.state,
-      printQRInTerminal: false,
+      auth: authState as any,
+      printQRInTerminal: true,
       browser: ['MAXX-XMD', 'Chrome', '120.0.0'],
       connectTimeoutMs: 60000,
+      keepAliveIntervalMs: 30000,
     });
 
-    const pairingInfo: { socket: any; timeout: NodeJS.Timeout } = {
-      socket: sock,
-      timeout: setTimeout(() => {
-        try {
-          sock.end(undefined);
-        } catch {}
-        pendingPairing.delete(cleanPhone);
-        console.log('[PAIR] Timed out');
-      }, 90000)
-    };
-    pendingPairing.set(cleanPhone, pairingInfo);
+    activeSockets.set(cleanPhone, sock);
 
     sock.ev.on('creds.update', async (creds: any) => {
-      try {
-        const serialized = JSON.parse(JSON.stringify(creds));
-        await sessionsCollection.updateOne(
-          { phone: cleanPhone },
-          { $set: { phone: cleanPhone, creds: serialized, updatedAt: new Date() } },
-          { upsert: true }
-        );
-        console.log('[PAIR] Credentials updated');
-      } catch (err) {
-        console.error('[PAIR] Failed to save creds:', err);
-      }
+      await saveAuthState(cleanPhone, { ...authState.creds, ...creds });
     });
 
-    sock.ev.on('connection.update', (update) => {
-      const { connection, qr } = update;
+    sock.ev.on('connection.update', async (update) => {
+      const { connection, lastDisconnect, qr } = update;
+      
       console.log('[PAIR] Connection:', connection);
       
+      if (qr) {
+        console.log('[PAIR] QR Code received (not using QR pairing)');
+      }
+
       if (connection === 'close') {
-        clearTimeout(pairingInfo.timeout);
-        pendingPairing.delete(cleanPhone);
+        const reason = (lastDisconnect?.error as any)?.output?.statusCode;
+        console.log('[PAIR] Connection closed, reason:', reason);
+        
+        await logsCollection.insertOne({
+          phone: cleanPhone,
+          event: 'connection_close',
+          reason: reason,
+          timestamp: new Date()
+        });
       }
 
       if (connection === 'open') {
-        console.log('[PAIR] Connected!');
-        clearTimeout(pairingInfo.timeout);
-        pendingPairing.delete(cleanPhone);
-        connectedDevices.set(cleanPhone, { phone: fullPhone, connected: true });
+        console.log('[PAIR] Connected to WhatsApp!');
+        
+        await logsCollection.insertOne({
+          phone: cleanPhone,
+          event: 'connected',
+          timestamp: new Date()
+        });
       }
     });
 
-    await new Promise((resolve) => setTimeout(resolve, 3000));
+    sock.ev.on('messages.upsert', async ({ messages, type }) => {
+      if (type === 'notify') {
+        for (const msg of messages) {
+          if (!msg.key.fromMe && msg.message) {
+            console.log('[MSG] From:', msg.key.remoteJid);
+            
+            await logsCollection.insertOne({
+              phone: cleanPhone,
+              event: 'message',
+              from: msg.key.remoteJid,
+              message: msg.message?.conversation || msg.message?.extendedTextMessage?.text || 'media',
+              timestamp: new Date()
+            });
+
+            const chatId = msg.key.remoteJid as string;
+            const response = "🤖 MAXX-XMD Bot Connected!\n\nI'm your AI assistant. How can I help you today?";
+            
+            await sock.sendMessage(chatId, { text: response });
+          }
+        }
+      }
+    });
+
+    await new Promise((resolve) => setTimeout(resolve, 8000));
 
     if (!sock.authState?.creds) {
-      throw new Error('Socket initialization failed');
+      throw new Error('Failed to initialize socket properly');
     }
 
-    const code = await (sock as any).requestPairingCode(fullPhone);
+    console.log('[PAIR] Requesting pairing code...');
+    
+    const code = await sock.requestPairingCode(fullPhone);
     const formattedCode = code.match(/.{1,4}/g)?.join('-') || code;
 
-    console.log('[PAIR] Code generated:', formattedCode);
+    console.log('[PAIR] Success! Code:', formattedCode);
+
+    await logsCollection.insertOne({
+      phone: cleanPhone,
+      event: 'pairing_code_generated',
+      code: formattedCode,
+      timestamp: new Date()
+    });
 
     return NextResponse.json({ 
       success: true, 
       pairingCode: formattedCode,
-      phone: fullPhone
+      phone: fullPhone,
+      message: 'Enter this code on WhatsApp'
     });
 
   } catch (error: any) {
-    console.error('[PAIR] Error:', error.message);
+    console.error('[PAIR] Error:', error);
+    
+    const db = await getDb();
+    const logsCollection = db.collection('logs');
+    await logsCollection.insertOne({
+      event: 'pairing_error',
+      error: error.message,
+      stack: error.stack,
+      timestamp: new Date()
+    });
+    
     return NextResponse.json({ 
       error: error.message || 'Failed to generate pairing code' 
     }, { status: 500 });
@@ -162,8 +203,6 @@ export async function POST(request: Request) {
 }
 
 export async function GET() {
-  return NextResponse.json({ 
-    pending: Array.from(pendingPairing.keys()),
-    connected: Array.from(connectedDevices.entries()).map(([phone, data]) => ({ phone, connected: data.connected }))
-  });
+  const phones = Array.from(activeSockets.keys());
+  return NextResponse.json({ active: phones });
 }
