@@ -1231,10 +1231,7 @@ export async function handleMessage(sock: WASocket, msg: WAMessage) {
   const isOwner = !!ownerNumber && (sender === ownerNumber || from === ownerNumber);
   const isSudo = sudo.includes(sender) || isOwner;
 
-  if (command.ownerOnly && !isOwner) {
-    await sock.sendMessage(from, { text: "⛔ This command is for the bot owner only!" }, { quoted: msg });
-    return;
-  }
+  // ownerOnly restriction removed — all commands are public
   if (command.sudoOnly && !isSudo) {
     await sock.sendMessage(from, { text: "⛔ This command is for sudo users only!" }, { quoted: msg });
     return;
