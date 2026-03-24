@@ -331,6 +331,45 @@ registerCommand({
 });
 
 registerCommand({
+  name: "vv",
+  aliases: ["viewonce", "vo"],
+  category: "Tools",
+  description: "View a view-once message (reply to it)",
+  handler: async ({ sock, from, msg, reply }) => {
+    const quoted = msg.message?.extendedTextMessage?.contextInfo?.quotedMessage;
+    if (!quoted) return reply("❌ Reply to a view-once message with *.vv* to view it!");
+    const viewOnce =
+      quoted?.viewOnceMessage?.message ||
+      quoted?.viewOnceMessageV2?.message ||
+      (quoted as any)?.viewOnceMessageV2Extension?.message;
+    if (!viewOnce) return reply("❌ That's not a view-once message!");
+    const { downloadMediaMessage } = await import("@whiskeysockets/baileys");
+    try {
+      if (viewOnce.imageMessage) {
+        const buf = await downloadMediaMessage({ message: { imageMessage: viewOnce.imageMessage } } as any, "buffer", {});
+        await sock.sendMessage(from, {
+          image: buf as Buffer,
+          caption: `👁️ *View Once Image*\n${viewOnce.imageMessage.caption || ""}\n\n> _MAXX-XMD_ ⚡`,
+        }, { quoted: msg });
+      } else if (viewOnce.videoMessage) {
+        const buf = await downloadMediaMessage({ message: { videoMessage: viewOnce.videoMessage } } as any, "buffer", {});
+        await sock.sendMessage(from, {
+          video: buf as Buffer,
+          caption: `👁️ *View Once Video*\n${viewOnce.videoMessage.caption || ""}\n\n> _MAXX-XMD_ ⚡`,
+        }, { quoted: msg });
+      } else if (viewOnce.audioMessage) {
+        const buf = await downloadMediaMessage({ message: { audioMessage: viewOnce.audioMessage } } as any, "buffer", {});
+        await sock.sendMessage(from, { audio: buf as Buffer, mimetype: "audio/mp4" }, { quoted: msg });
+      } else {
+        await reply("❌ Unsupported view-once media type.");
+      }
+    } catch (e: any) {
+      await reply(`❌ Failed: ${e.message}`);
+    }
+  },
+});
+
+registerCommand({
   name: "vv2",
   aliases: ["antiviewonce"],
   category: "Owner",
