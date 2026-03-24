@@ -13,22 +13,53 @@ registerCommand({
       const data = await res.json() as any;
       const cur = data.current_condition?.[0];
       const area = data.nearest_area?.[0];
+      const today = data.weather?.[0];
       if (!cur) throw new Error();
-      const loc = `${area?.areaName?.[0]?.value || city}, ${area?.country?.[0]?.value || ""}`;
+      const loc = `${area?.areaName?.[0]?.value || city}, ${area?.country?.[0]?.value || ""}`.replace(/, $/, "");
       const desc = cur.weatherDesc?.[0]?.value || "N/A";
-      const temp = cur.temp_C;
-      const feels = cur.FeelsLikeC;
-      const humidity = cur.humidity;
+      const tempC = cur.temp_C;
+      const tempF = cur.temp_F || Math.round(+tempC * 9 / 5 + 32);
+      const feelsC = cur.FeelsLikeC;
       const wind = cur.windspeedKmph;
+      const windDir = cur.winddir16Point || "";
+      const humidity = cur.humidity;
+      const cloud = cur.cloudcover;
+      const precip = cur.precipMM;
       const vis = cur.visibility;
-      await reply(`🌤️ *Weather in ${loc}*
+      const maxC = today?.maxtempC ?? "?";
+      const minC = today?.mintempC ?? "?";
+      const sunrise = today?.astronomy?.[0]?.sunrise || "?";
+      const sunset = today?.astronomy?.[0]?.sunset || "?";
 
-🌡️ Temperature: *${temp}°C*
-🤔 Feels like: *${feels}°C*
-⛅ Condition: *${desc}*
-💧 Humidity: *${humidity}%*
-🌬️ Wind: *${wind} km/h*
-👁️ Visibility: *${vis} km*`);
+      const condEmoji = (() => {
+        const d = desc.toLowerCase();
+        if (d.includes("sun") || d.includes("clear")) return "☀️";
+        if (d.includes("thunder") || d.includes("storm")) return "⛈️";
+        if (d.includes("rain") || d.includes("drizzle")) return "🌧️";
+        if (d.includes("snow") || d.includes("blizzard")) return "❄️";
+        if (d.includes("fog") || d.includes("mist")) return "🌫️";
+        if (d.includes("cloud") || d.includes("overcast")) return "☁️";
+        if (d.includes("wind")) return "💨";
+        return "🌤️";
+      })();
+
+      await reply(`${condEmoji} *Weather Report*
+
+📍 *Location:* ${loc}
+🌡️ *Temperature:* ${tempC}°C / ${tempF}°F
+🤔 *Feels Like:* ${feelsC}°C
+💨 *Wind:* ${wind} km/h ${windDir}
+💧 *Humidity:* ${humidity}%
+☁️ *Cloud Cover:* ${cloud}%
+🌧️ *Precipitation:* ${precip}mm
+👁️ *Visibility:* ${vis} km
+📝 *Condition:* ${desc}
+
+📅 *Today's Forecast:*
+🔺 Max: ${maxC}°C
+🔻 Min: ${minC}°C
+🌅 Sunrise: ${sunrise}
+🌇 Sunset: ${sunset}`);
     } catch {
       await reply("❌ Could not fetch weather. Check the city name and try again.");
     }
@@ -202,19 +233,74 @@ registerCommand({
   category: "Search",
   description: "Search YTS for movies",
   handler: async ({ args, reply }) => {
+    const sub = args[0]?.toLowerCase();
+    const rest = args.slice(1).join(" ");
+
+    // .yts dl <title> — give download link for top match
+    if (sub === "dl") {
+      const title = rest;
+      if (!title) return reply("❓ Usage: .yts dl <movie name>\nExample: .yts dl Inception");
+      try {
+        const res = await fetch(`https://yts.mx/api/v2/list_movies.json?query_term=${encodeURIComponent(title)}&limit=1`);
+        const data = await res.json() as any;
+        const m = data.data?.movies?.[0];
+        if (!m) return reply(`❌ No movie found for *${title}*`);
+        const links = m.torrents?.map((t: any) =>
+          `• *${t.quality}* [${t.size}] — ${t.url}`
+        ).join("\n") || "No torrent links found.";
+        await reply(`📥 *Download: ${m.title} (${m.year})*\n\n${links}\n\n🔗 ${m.url}`);
+      } catch {
+        await reply("❌ Could not find download links right now.");
+      }
+      return;
+    }
+
+    // .yts <query> — search
     const query = args.join(" ");
-    if (!query) return reply("❓ Usage: .yts <movie name>\nExample: .yts Inception");
+    if (!query) return reply("❓ Usage: .yts <movie name>\nExample: .yts Avengers\n💡 To download: .yts dl <movie name>");
     try {
-      const res = await fetch(`https://yts.mx/api/v2/list_movies.json?query_term=${encodeURIComponent(query)}&limit=5`);
-      const data = await res.json() as any;
-      const movies = data.data?.movies;
-      if (!movies?.length) return reply(`❌ No movies found for *${query}*`);
-      const list = movies.map((m: any) =>
-        `🎬 *${m.title}* (${m.year})\n⭐ ${m.rating}/10 | ${m.genres?.join(", ")}\n🔗 ${m.url}\n📥 Torrents: ${m.torrents?.map((t: any) => `${t.quality}`).join(" | ")}`
-      ).join("\n\n");
-      await reply(`🎬 *YTS Movie Results*\n\n${list}`);
+      const [ytsRes, omdbRes] = await Promise.allSettled([
+        fetch(`https://yts.mx/api/v2/list_movies.json?query_term=${encodeURIComponent(query)}&limit=8`).then(r => r.json()),
+        fetch(`https://www.omdbapi.com/?apikey=trilogy&t=${encodeURIComponent(query)}&type=movie`).then(r => r.json()),
+      ]);
+
+      const movies: any[] = (ytsRes.status === "fulfilled" ? (ytsRes.value as any).data?.movies : null) || [];
+      if (!movies.length) return reply(`❌ No movies found for *${query}*`);
+      const top = movies[0];
+      const omdb: any = omdbRes.status === "fulfilled" ? omdbRes.value : {};
+
+      const director = omdb?.Director && omdb.Director !== "N/A" ? omdb.Director : null;
+      const cast = omdb?.Actors && omdb.Actors !== "N/A" ? omdb.Actors : null;
+      const plot = top.summary?.replace(/<[^>]+>/g, "").trim() ||
+        (omdb?.Plot && omdb.Plot !== "N/A" ? omdb.Plot : "No description available.");
+      const genres = top.genres?.join(", ") || omdb?.Genre || "N/A";
+      const runtime = top.runtime ? `${top.runtime} min` : (omdb?.Runtime || "N/A");
+
+      const header = `╔══════════════════════╗\n║   🎬 *MOVIE BOX* 🍿   ║\n╚══════════════════════╝`;
+
+      let msg = `${header}\n\n`;
+      msg += `🎬 *${top.title}* (${top.year})\n`;
+      msg += `⭐ IMDb: ${top.rating}/10\n`;
+      msg += `🎭 ${genres}\n`;
+      msg += `⏱️ ${runtime}\n`;
+      if (director) msg += `🎬 Director: ${director}\n`;
+      if (cast) msg += `🌟 Cast: ${cast}\n`;
+      msg += `\n📝 ${plot.length > 250 ? plot.slice(0, 250) + "..." : plot}\n\n`;
+      msg += `📥 _.yts dl ${top.title}_\n\n`;
+      msg += `━━━━━━━━━━━━━━━━━━━━━━\n\n`;
+
+      if (movies.length > 1) {
+        msg += `📋 *More Results:*\n\n`;
+        movies.slice(1).forEach((m: any, i: number) => {
+          msg += `*${i + 2}. ${m.title}* (${m.year})\n`;
+          msg += `┃ 📥 _.yts dl ${m.title}_\n\n`;
+        });
+      }
+
+      msg += `💡 *To download:* .yts dl <movie name>`;
+      await reply(msg);
     } catch {
-      await reply("❌ Could not search YTS right now.");
+      await reply("❌ Could not search movies right now.");
     }
   },
 });
