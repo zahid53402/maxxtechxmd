@@ -42,6 +42,10 @@ import "./commands/sports.js";
 import "./commands/tools.js";
 import "./commands/photo.js";
 import "./commands/extra.js";
+import "./commands/anime.js";
+import "./commands/pokemon.js";
+import "./commands/education.js";
+import "./commands/morefun.js";
 
 // ── Tools / download / audio / AI — inline here ──────────────────────────────
 import { registerCommand } from "./commands/types.js";
