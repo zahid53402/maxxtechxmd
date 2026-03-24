@@ -438,3 +438,81 @@ registerCommand({
 });
 
 // qr is handled by media2.ts which is the canonical implementation
+
+// ── EliteProTech APIs ─────────────────────────────────────────────────────────
+
+registerCommand({
+  name: "tempemail",
+  aliases: ["tempmail", "disposable", "fakedmail", "burnermail"],
+  category: "Search",
+  description: "Generate a temporary disposable email address",
+  usage: ".tempemail",
+  handler: async ({ reply }) => {
+    try {
+      const res = await fetch("https://eliteprotech-apis.zone.id/tempemail");
+      const data = await res.json() as any;
+      if (!data.success || !data.email) throw new Error("no email");
+      await reply(
+        `📧 *Temporary Email*\n\n📬 \`${data.email}\`\n\n_This is a disposable inbox — use it for signups without revealing your real email._\n\n> _MAXX-XMD_ ⚡`
+      );
+    } catch {
+      await reply("❌ Could not generate temp email. Try again.\n\n> _MAXX-XMD_ ⚡");
+    }
+  },
+});
+
+registerCommand({
+  name: "github",
+  aliases: ["githubstalk", "ghstalk", "ghprofile", "gitprofile"],
+  category: "Search",
+  description: "Look up a GitHub user profile (.github torvalds)",
+  usage: ".github <username>",
+  handler: async ({ args, reply }) => {
+    const user = args[0];
+    if (!user) return reply("❓ Usage: .github <username>\nExample: .github torvalds\n\n> _MAXX-XMD_ ⚡");
+    try {
+      const res = await fetch(`https://eliteprotech-apis.zone.id/githubstalk?user=${encodeURIComponent(user)}`);
+      const data = await res.json() as any;
+      if (!data.status || !data.result) throw new Error("not found");
+      const r = data.result;
+      await reply(
+        `🐙 *GitHub Profile*\n\n` +
+        `👤 *Username:* ${r.username || user}\n` +
+        `📛 *Name:* ${r.fullName || "N/A"}\n` +
+        `📝 *Bio:* ${r.bio || "No bio"}\n` +
+        `📦 *Repos:* ${r.repositories ?? r.repos ?? "N/A"}\n` +
+        `👥 *Followers:* ${r.followers ?? "N/A"}\n` +
+        `➡️ *Following:* ${r.following ?? "N/A"}\n` +
+        `🔗 *URL:* https://github.com/${user}\n\n> _MAXX-XMD_ ⚡`
+      );
+    } catch {
+      await reply(`❌ GitHub user *${args[0]}* not found.\n\n> _MAXX-XMD_ ⚡`);
+    }
+  },
+});
+
+registerCommand({
+  name: "apk",
+  aliases: ["apkdownload", "apksearch", "getapk", "apkpure"],
+  category: "Search",
+  description: "Search for an APK to download (.apk whatsapp)",
+  usage: ".apk <app name>",
+  handler: async ({ args, reply }) => {
+    const query = args.join(" ");
+    if (!query) return reply("❓ Usage: .apk <app name>\nExample: .apk whatsapp\n\n> _MAXX-XMD_ ⚡");
+    try {
+      const res = await fetch(`https://eliteprotech-apis.zone.id/apk?q=${encodeURIComponent(query)}`);
+      const data = await res.json() as any;
+      if (!data.status || !data.results?.length) throw new Error("not found");
+      const top = data.results.slice(0, 5);
+      const list = top.map((a: any, i: number) =>
+        `${i + 1}. *${a.name}*\n   📦 Package: \`${a.package}\`\n   📏 Size: ${a.size ? (a.size / 1024 / 1024).toFixed(1) + " MB" : "N/A"}`
+      ).join("\n\n");
+      await reply(
+        `📱 *APK Search: ${query}*\n\n${list}\n\n🔗 Download: https://apkpure.com/search?q=${encodeURIComponent(query)}\n\n> _MAXX-XMD_ ⚡`
+      );
+    } catch {
+      await reply(`❌ No APK found for *${query}*.\n\n> _MAXX-XMD_ ⚡`);
+    }
+  },
+});
