@@ -229,7 +229,7 @@ registerCommand({
 
 registerCommand({
   name: "yts",
-  aliases: ["yify", "movies"],
+  aliases: ["yify", "movies", "movie", "film"],
   category: "Search",
   description: "Search YTS for movies",
   handler: async ({ args, reply }) => {
