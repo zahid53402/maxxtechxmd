@@ -119,16 +119,39 @@ export async function startBotSession(sessionId = "main"): Promise<WASocket> {
             const prefix = settings.prefix || ".";
             const mode = settings.mode || "public";
             const ownerJid = ownerNumber.replace(/[^0-9]/g, "") + "@s.whatsapp.net";
-            await sock.sendMessage(ownerJid, {
-              text:
-                `✅ *${botName} IS NOW ONLINE!*\n\n` +
-                `🟢 Your bot has connected successfully and is ready to use.\n\n` +
-                `*Bot Name:* ${botName}\n` +
-                `*Prefix:* ${prefix}\n` +
-                `*Mode:* ${mode}\n\n` +
-                `Type *${prefix}menu* to see all commands.\n\n` +
-                `> _Powered by MAXX-XMD_ ⚡`,
-            });
+
+            const caption =
+              `✅ *${botName} IS NOW ONLINE!*\n\n` +
+              `🟢 Your bot has connected successfully and is ready to use.\n\n` +
+              `*Bot Name:* ${botName}\n` +
+              `*Prefix:* ${prefix}\n` +
+              `*Mode:* ${mode}\n\n` +
+              `Type *${prefix}menu* to see all commands.\n\n` +
+              `> _Powered by MAXX-XMD_ ⚡`;
+
+            // Try to fetch a fire logo image for the startup message
+            let logoImageBuf: Buffer | null = null;
+            try {
+              const logoRes = await fetch(
+                `https://eliteprotech-apis.zone.id/firelogo?text=${encodeURIComponent(botName)}`,
+                { signal: AbortSignal.timeout(8000) }
+              );
+              const logoData = await logoRes.json() as any;
+              if (logoData.success && logoData.image) {
+                const imgRes = await fetch(logoData.image, { signal: AbortSignal.timeout(8000) });
+                if (imgRes.ok) {
+                  const ab = await imgRes.arrayBuffer();
+                  logoImageBuf = Buffer.from(ab);
+                }
+              }
+            } catch { /* logo fetch failed, fallback to text */ }
+
+            if (logoImageBuf) {
+              await sock.sendMessage(ownerJid, { image: logoImageBuf, caption });
+            } else {
+              await sock.sendMessage(ownerJid, { text: caption });
+            }
+
             logger.info({ sessionId, ownerNumber }, "Startup success message sent to owner");
           } catch (err) {
             logger.error({ err }, "Failed to send startup message to owner");
