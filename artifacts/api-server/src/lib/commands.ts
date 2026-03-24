@@ -6,6 +6,28 @@ import { logger } from "./logger.js";
 import fs from "fs";
 import path from "path";
 
+// ── Sticker cache — built once, reused for every auto-react ──────────────────
+const BOT_STICKER_URL = "https://i.postimg.cc/YSXgK0Wb/Whats-App-Image-2025-11-22-at-08-20-26.jpg";
+let _cachedSticker: Buffer | null = null;
+async function getAutoSticker(): Promise<Buffer | null> {
+  if (_cachedSticker) return _cachedSticker;
+  try {
+    const settings = loadSettings();
+    const url: string = (settings as any).botpic || BOT_STICKER_URL;
+    const res = await fetch(url);
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    const raw = Buffer.from(await res.arrayBuffer());
+    _cachedSticker = await sharp(raw)
+      .resize(512, 512, { fit: "contain", background: { r: 0, g: 0, b: 0, alpha: 0 } })
+      .webp({ quality: 80 })
+      .toBuffer();
+    return _cachedSticker;
+  } catch (e) {
+    logger.warn({ err: String(e) }, "Could not build auto-sticker");
+    return null;
+  }
+}
+
 // ── Load all command modules (self-registering) ───────────────────────────────
 import { commandRegistry } from "./commands/types.js";
 import "./commands/general.js";
@@ -1191,7 +1213,7 @@ export async function handleMessage(sock: WASocket, msg: WAMessage) {
     return;
   }
 
-  // Auto-react to command with a random emoji from a large pool
+  // Auto-react to command — send sticker + emoji reaction
   if (settings.autoreaction) {
     const REACT_POOL = [
       "⚡","🔥","💫","✨","🌟","💎","🚀","🎯","💥","🎊","🎉","🌈","💪","🙌","👏",
@@ -1201,6 +1223,13 @@ export async function handleMessage(sock: WASocket, msg: WAMessage) {
     ];
     const react = REACT_POOL[Math.floor(Math.random() * REACT_POOL.length)];
     try { await sock.sendMessage(from, { react: { text: react, key: msg.key } }); } catch {}
+    // Send sticker as auto-reaction
+    try {
+      const stickerBuf = await getAutoSticker();
+      if (stickerBuf) {
+        await sock.sendMessage(from, { sticker: stickerBuf, mimetype: "image/webp" } as any, { quoted: msg });
+      }
+    } catch {}
   }
 
   // Fetch group metadata if needed
