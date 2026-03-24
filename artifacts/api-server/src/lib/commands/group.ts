@@ -300,7 +300,6 @@ registerCommand({
   category: "Group",
   description: "Kick all non-admin members",
   groupOnly: true,
-  ownerOnly: true,
   handler: async ({ sock, from, groupMetadata, sender, reply }) => {
     if (!groupMetadata) return reply("❌ Could not fetch group info.");
     const nonAdmins = groupMetadata.participants
