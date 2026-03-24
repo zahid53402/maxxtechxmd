@@ -1383,15 +1383,19 @@ export async function handleMessage(sock: WASocket, msg: WAMessage) {
   const command = commandRegistry.get(commandName);
   if (!command) return;
 
-  // Owner check
-  const ownerNumber = settings.ownerNumber ? settings.ownerNumber + "@s.whatsapp.net" : "";
+  // Owner check — reads from env var first, falls back to saved settings number
+  const envOwner = process.env.OWNER_NUMBER?.replace(/[^0-9]/g, "");
+  const settingsOwner = settings.ownerNumber?.replace(/[^0-9]/g, "");
+  const ownerNum = envOwner || settingsOwner || "";
+  const ownerJid = ownerNum ? ownerNum + "@s.whatsapp.net" : "";
+  const senderNum = sender.replace("@s.whatsapp.net", "").replace(/[^0-9]/g, "");
   const sudo = loadSudo();
-  const isOwner = !!ownerNumber && (sender === ownerNumber || from === ownerNumber);
+  const isOwner = !!ownerNum && (senderNum === ownerNum || sender === ownerJid || from === ownerJid);
   const isSudo = sudo.includes(sender) || isOwner;
 
-  // ownerOnly restriction removed — all commands are public
+  // Block sensitive settings commands from non-sudo users
   if (command.sudoOnly && !isSudo) {
-    await sock.sendMessage(from, { text: "⛔ This command is for sudo users only!" }, { quoted: msg });
+    await sock.sendMessage(from, { text: `⛔ *Owner/Sudo only!*\n\nThis command can only be used by the bot owner or sudo users.` }, { quoted: msg });
     return;
   }
   if (command.groupOnly && !isGroup) {
