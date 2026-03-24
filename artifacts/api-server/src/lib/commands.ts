@@ -1128,9 +1128,16 @@ export async function handleMessage(sock: WASocket, msg: WAMessage) {
     return;
   }
 
-  // Auto-react to command
+  // Auto-react to command with a random emoji from a large pool
   if (settings.autoreaction) {
-    try { await sock.sendMessage(from, { react: { text: "⚡", key: msg.key } }); } catch {}
+    const REACT_POOL = [
+      "⚡","🔥","💫","✨","🌟","💎","🚀","🎯","💥","🎊","🎉","🌈","💪","🙌","👏",
+      "❤️","🧡","💛","💚","💙","💜","🖤","🤍","❤️‍🔥","💯","🤩","😎","🏆","👌",
+      "🦋","🌺","🌸","🍀","⭐","🌙","☀️","🌊","🎶","🎵","🎸","🎤","🏅","🥇",
+      "🔮","🪄","🦄","🐉","👑","🫡","🤙","🫶","💝","🍭","🎁","🎀","🎈","🪅",
+    ];
+    const react = REACT_POOL[Math.floor(Math.random() * REACT_POOL.length)];
+    try { await sock.sendMessage(from, { react: { text: react, key: msg.key } }); } catch {}
   }
 
   // Fetch group metadata if needed
