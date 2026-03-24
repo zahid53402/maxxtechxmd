@@ -7,7 +7,7 @@
   },
   "scripts": {
     "start": "node artifacts/api-server/dist/index.mjs",
-    "heroku-postbuild": "npm install -g pnpm@9 && pnpm install && pnpm --filter @workspace/api-server run build"
+    "heroku-postbuild": "bash heroku-build.sh"
   },
   "private": true,
   "devDependencies": {
