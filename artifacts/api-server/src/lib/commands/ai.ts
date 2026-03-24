@@ -104,17 +104,27 @@ registerCommand({
   name: "gpt",
   aliases: ["chatgpt", "ask"],
   category: "AI",
-  description: "Chat with ChatGPT (GPT-4)",
+  description: "Chat with ChatGPT AI (.gpt how do black holes form?)",
   usage: ".gpt <question>",
   handler: async ({ args, reply }) => {
     const q = args.join(" ");
-    if (!q) return reply(`❓ Usage: .gpt <question>${FOOTER}`);
+    if (!q) return reply(`❓ Usage: .gpt <question>\nExample: .gpt how do black holes form?${FOOTER}`);
     await reply("🤖 ChatGPT thinking... ⏳");
     try {
-      const ans = await pollinationsText(q, "openai");
-      await reply(`🤖 *ChatGPT*\n\n${ans}${FOOTER}`);
-    } catch (e: any) {
-      await reply(`❌ ChatGPT unavailable: ${e.message}${FOOTER}`);
+      const res = await fetch(`https://eliteprotech-apis.zone.id/chatgpt?prompt=${encodeURIComponent(q)}`, {
+        signal: AbortSignal.timeout(20000),
+      });
+      const data = await res.json() as any;
+      if (!data.success || !data.response) throw new Error("No response");
+      await reply(`🤖 *ChatGPT*\n\n${data.response}${FOOTER}`);
+    } catch {
+      // Fallback to pollinations if eliteprotech fails
+      try {
+        const ans = await pollinationsText(q, "openai");
+        await reply(`🤖 *ChatGPT*\n\n${ans}${FOOTER}`);
+      } catch (e: any) {
+        await reply(`❌ ChatGPT unavailable. Try again.${FOOTER}`);
+      }
     }
   },
 });
