@@ -231,76 +231,135 @@ registerCommand({
   name: "yts",
   aliases: ["yify", "movies", "movie", "film"],
   category: "Search",
-  description: "Search YTS for movies",
-  handler: async ({ args, reply }) => {
+  description: "Search movies with poster and download option",
+  handler: async ({ sock, from, msg: waMsg, args, reply, settings }) => {
+    const p = settings.prefix;
     const sub = args[0]?.toLowerCase();
     const rest = args.slice(1).join(" ");
 
-    // .yts dl <title> — give download link for top match
-    if (sub === "dl") {
+    if (!args.length) {
+      return reply(
+        `🎬 *MOVIE BOX* 🍿\n\n*Commands:*\n${p}movie <name> — Search any movie\n${p}movie dl <name> — Get movie download links\n\n📝 *Examples:*\n${p}movie Avengers\n${p}movie Black Panther\n${p}movie dl Spiderman`
+      );
+    }
+
+    // ── .movie dl <name> ─────────────────────────────────────────────────────
+    if (sub === "dl" || sub === "download") {
       const title = rest;
-      if (!title) return reply("❓ Usage: .yts dl <movie name>\nExample: .yts dl Inception");
+      if (!title) return reply(`❌ Please provide a movie name.\n\n📝 Example: ${p}movie dl Avengers`);
+      await reply(`🎬 Searching *${title}* for download... ⏳`);
       try {
         const res = await fetch(`https://yts.mx/api/v2/list_movies.json?query_term=${encodeURIComponent(title)}&limit=1`);
         const data = await res.json() as any;
         const m = data.data?.movies?.[0];
-        if (!m) return reply(`❌ No movie found for *${title}*`);
+        if (!m) return reply(`❌ No movie found for *${title}*.\n\nTry a different spelling or shorter name.`);
         const links = m.torrents?.map((t: any) =>
-          `• *${t.quality}* [${t.size}] — ${t.url}`
-        ).join("\n") || "No torrent links found.";
-        await reply(`📥 *Download: ${m.title} (${m.year})*\n\n${links}\n\n🔗 ${m.url}`);
+          `• *${t.quality}* [${t.size}]\n  🔗 ${t.url}`
+        ).join("\n\n") || "No torrent links found.";
+
+        const text =
+          `╔══════════════════════╗\n║  📥 *MOVIE DOWNLOAD*  ║\n╚══════════════════════╝\n\n` +
+          `🎬 *${m.title}* (${m.year})\n` +
+          `⭐ IMDb: ${m.rating}/10\n` +
+          `🔗 ${m.url}\n\n` +
+          `━━━━━━━━━━━━━━━━━━━━━━\n` +
+          `📥 *Download Links:*\n\n${links}\n\n` +
+          `💡 _Copy and open in a torrent client_`;
+
+        const posterUrl = m.large_cover_image || m.medium_cover_image || null;
+        if (posterUrl) {
+          try {
+            const buf = await fetch(posterUrl).then(r => r.ok ? r.arrayBuffer() : null);
+            if (buf) {
+              await sock.sendMessage(from, { image: Buffer.from(buf), caption: text }, { quoted: waMsg });
+              return;
+            }
+          } catch {}
+        }
+        await reply(text);
       } catch {
-        await reply("❌ Could not find download links right now.");
+        await reply("❌ Could not find download links. Try again later.");
       }
       return;
     }
 
-    // .yts <query> — search
+    // ── .movie <query> ────────────────────────────────────────────────────────
     const query = args.join(" ");
-    if (!query) return reply("❓ Usage: .yts <movie name>\nExample: .yts Avengers\n💡 To download: .yts dl <movie name>");
+    if (!query) return reply(`❓ Usage: ${p}movie <movie name>\n\n💡 To download: ${p}movie dl <movie name>`);
+
+    await reply(`🔍 Searching *${query}*... 🍿`);
+
     try {
       const [ytsRes, omdbRes] = await Promise.allSettled([
         fetch(`https://yts.mx/api/v2/list_movies.json?query_term=${encodeURIComponent(query)}&limit=8`).then(r => r.json()),
-        fetch(`https://www.omdbapi.com/?apikey=trilogy&t=${encodeURIComponent(query)}&type=movie`).then(r => r.json()),
+        fetch(`https://www.omdbapi.com/?apikey=trilogy&s=${encodeURIComponent(query)}&type=movie`).then(r => r.json()),
       ]);
 
       const movies: any[] = (ytsRes.status === "fulfilled" ? (ytsRes.value as any).data?.movies : null) || [];
-      if (!movies.length) return reply(`❌ No movies found for *${query}*`);
+      if (!movies.length) {
+        return reply(`❌ No movies found for *${query}*.\n\nTry a different spelling or shorter name.`);
+      }
       const top = movies[0];
-      const omdb: any = omdbRes.status === "fulfilled" ? omdbRes.value : {};
+      const omdbList: any = omdbRes.status === "fulfilled" ? omdbRes.value : {};
+      const firstOmdb: any = omdbList.Search?.[0];
 
-      const director = omdb?.Director && omdb.Director !== "N/A" ? omdb.Director : null;
-      const cast = omdb?.Actors && omdb.Actors !== "N/A" ? omdb.Actors : null;
-      const plot = top.summary?.replace(/<[^>]+>/g, "").trim() ||
-        (omdb?.Plot && omdb.Plot !== "N/A" ? omdb.Plot : "No description available.");
-      const genres = top.genres?.join(", ") || omdb?.Genre || "N/A";
-      const runtime = top.runtime ? `${top.runtime} min` : (omdb?.Runtime || "N/A");
+      // Fetch full OMDB details for the top movie
+      let omdbDetail: any = {};
+      if (firstOmdb?.imdbID) {
+        try {
+          const dr = await fetch(`https://www.omdbapi.com/?apikey=trilogy&i=${firstOmdb.imdbID}&plot=short`);
+          omdbDetail = await dr.json() as any;
+        } catch {}
+      }
 
-      const header = `╔══════════════════════╗\n║   🎬 *MOVIE BOX* 🍿   ║\n╚══════════════════════╝`;
+      const director = omdbDetail?.Director && omdbDetail.Director !== "N/A" ? omdbDetail.Director : null;
+      const cast     = omdbDetail?.Actors   && omdbDetail.Actors   !== "N/A" ? omdbDetail.Actors   : null;
+      const plot     = top.summary?.replace(/<[^>]+>/g, "").trim() ||
+        (omdbDetail?.Plot && omdbDetail.Plot !== "N/A" ? omdbDetail.Plot : "No description available.");
+      const genres  = top.genres?.join(", ") || omdbDetail?.Genre   || "N/A";
+      const runtime = top.runtime ? `${top.runtime} min` : (omdbDetail?.Runtime || "N/A");
+      const rating  = top.rating || omdbDetail?.imdbRating || "N/A";
 
-      let msg = `${header}\n\n`;
-      msg += `🎬 *${top.title}* (${top.year})\n`;
-      msg += `⭐ IMDb: ${top.rating}/10\n`;
-      msg += `🎭 ${genres}\n`;
-      msg += `⏱️ ${runtime}\n`;
-      if (director) msg += `🎬 Director: ${director}\n`;
-      if (cast) msg += `🌟 Cast: ${cast}\n`;
-      msg += `\n📝 ${plot.length > 250 ? plot.slice(0, 250) + "..." : plot}\n\n`;
-      msg += `📥 _.yts dl ${top.title}_\n\n`;
-      msg += `━━━━━━━━━━━━━━━━━━━━━━\n\n`;
+      let caption =
+        `╔══════════════════════╗\n║   🎬 *MAXX HUB* 🍿   ║\n╚══════════════════════╝\n\n` +
+        `🎬 *${top.title}* (${top.year})\n` +
+        `⭐ IMDb: ${rating}/10\n` +
+        `🎭 ${genres}\n` +
+        `⏱️ ${runtime}\n`;
+      if (director) caption += `🎬 Director: ${director}\n`;
+      if (cast)     caption += `🌟 Cast: ${cast}\n`;
+      caption += `\n📝 ${plot.length > 300 ? plot.slice(0, 300) + "..." : plot}\n\n`;
+      caption += `📥 _${p}movie dl ${top.title}_\n\n`;
+      caption += `━━━━━━━━━━━━━━━━━━━━━━\n\n`;
 
       if (movies.length > 1) {
-        msg += `📋 *More Results:*\n\n`;
-        movies.slice(1).forEach((m: any, i: number) => {
-          msg += `*${i + 2}. ${m.title}* (${m.year})\n`;
-          msg += `┃ 📥 _.yts dl ${m.title}_\n\n`;
+        caption += `📋 *More Results:*\n\n`;
+        movies.slice(1, 8).forEach((m: any, i: number) => {
+          caption += `*${i + 2}. ${m.title}* (${m.year})\n`;
+          caption += `┃ 📥 _${p}movie dl ${m.title}_\n\n`;
         });
       }
 
-      msg += `💡 *To download:* .yts dl <movie name>`;
-      await reply(msg);
+      caption += `💡 *To download:* ${p}movie dl <movie name>`;
+
+      const posterUrl =
+        top.large_cover_image ||
+        top.medium_cover_image ||
+        (firstOmdb?.Poster && firstOmdb.Poster !== "N/A" ? firstOmdb.Poster : null);
+
+      if (posterUrl) {
+        try {
+          const buf = await fetch(posterUrl).then(r => r.ok ? r.arrayBuffer() : null);
+          if (buf && buf.byteLength > 500) {
+            await sock.sendMessage(from, { image: Buffer.from(buf), caption }, { quoted: waMsg });
+            return;
+          }
+        } catch {}
+      }
+
+      await reply(caption);
     } catch {
-      await reply("❌ Could not search movies right now.");
+      await reply("❌ Could not search movies right now. Try again later.");
     }
   },
 });
