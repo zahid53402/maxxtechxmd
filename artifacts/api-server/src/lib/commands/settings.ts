@@ -1,16 +1,16 @@
 import { registerCommand } from "./types";
-import { loadSettings, saveSettings } from "../botState";
+import { loadSettings, saveSettings, WORKSPACE_ROOT } from "../botState";
 import fs from "fs";
 import path from "path";
 
-const SUDO_FILE = path.join(process.cwd(), "../../sudo.json");
+const SUDO_FILE = path.join(WORKSPACE_ROOT, "sudo.json");
 function loadSudo(): string[] {
   try { if (fs.existsSync(SUDO_FILE)) return JSON.parse(fs.readFileSync(SUDO_FILE, "utf8")); } catch {}
   return [];
 }
 function saveSudo(list: string[]) { fs.writeFileSync(SUDO_FILE, JSON.stringify(list, null, 2)); }
 
-const BADWORD_FILE = path.join(process.cwd(), "../../badwords.json");
+const BADWORD_FILE = path.join(WORKSPACE_ROOT, "badwords.json");
 function loadBadwords(): string[] {
   try { if (fs.existsSync(BADWORD_FILE)) return JSON.parse(fs.readFileSync(BADWORD_FILE, "utf8")); } catch {}
   return [];
