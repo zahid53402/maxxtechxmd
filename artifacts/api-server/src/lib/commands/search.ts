@@ -243,51 +243,49 @@ registerCommand({
       );
     }
 
-    // ── .movie dl <name> — downloads official trailer and sends as MP4 ─────────
+    // ── .movie dl <name> — YTS download links ────────────────────────────────
     if (sub === "dl" || sub === "download") {
       const title = rest;
       if (!title) return reply(`❌ Please provide a movie name.\n\n📝 Example: ${p}movie dl Avengers`);
 
-      await reply(
-        `╔══════════════════════╗\n║  🎬 *MOVIE TRAILER*  ║\n╚══════════════════════╝\n\n` +
-        `🔍 Searching trailer for *${title}*...\n⏳ This may take up to 60 seconds...`
-      );
+      await reply(`🔍 Searching *${title}* on YTS... ⏳`);
 
       try {
-        const { searchYouTube, downloadVideo } = await import("../ytdlpUtil.js");
-
-        // Search YouTube for the official trailer
-        const ytUrl = await searchYouTube(`${title} official trailer HD`);
-
-        await reply(`🎬 Found trailer! Downloading *${title}*... ⬇️`);
-
-        const { buffer, duration } = await downloadVideo(ytUrl, 300);
-
-        if (buffer.length > 55 * 1024 * 1024) {
-          return reply(
-            `⚠️ Trailer too large (${Math.round(buffer.length / 1024 / 1024)}MB).\n` +
-            `WhatsApp limit is 55MB. Try a shorter movie name or search on YouTube directly.`
-          );
-        }
-
-        const mins = Math.floor(duration / 60);
-        const secs = (duration % 60).toString().padStart(2, "0");
-
-        await sock.sendMessage(from, {
-          video: buffer,
-          mimetype: "video/mp4",
-          caption:
-            `🎬 *${title}* — Official Trailer\n` +
-            `⏱️ ${mins}:${secs}`,
-          fileName: `${title} trailer.mp4`,
-        } as any, { quoted: waMsg });
-
-      } catch (e: any) {
-        await reply(
-          `❌ Could not download trailer for *${title}*.\n\n` +
-          `_${e.message?.slice(0, 120) || "Try again later"}_\n\n` +
-          `💡 Try: ${p}movie dl ${title} official trailer`
+        const res = await fetch(
+          `https://yts.mx/api/v2/list_movies.json?query_term=${encodeURIComponent(title)}&limit=1`
         );
+        const data = await res.json() as any;
+        const m = data.data?.movies?.[0];
+        if (!m) return reply(
+          `❌ No movie found for *${title}*.\n\nTry a different spelling or shorter name.`
+        );
+
+        const links = (m.torrents as any[])?.map((t: any) =>
+          `• *${t.quality}* [${t.type}] ${t.size}\n  🔗 ${t.url}`
+        ).join("\n\n") || "No download links found.";
+
+        const caption =
+          `╔══════════════════════╗\n║  📥 *MOVIE DOWNLOAD*  ║\n╚══════════════════════╝\n\n` +
+          `🎬 *${m.title}* (${m.year})\n` +
+          `⭐ IMDb: ${m.rating}/10  🌐 ${m.language?.toUpperCase() || "EN"}\n` +
+          `🔗 ${m.url}\n\n` +
+          `━━━━━━━━━━━━━━━━━━━━━━\n` +
+          `📥 *Download Links (YTS):*\n\n${links}\n\n` +
+          `💡 _Open links in a torrent client or browser_`;
+
+        const posterUrl = m.large_cover_image || m.medium_cover_image;
+        if (posterUrl) {
+          try {
+            const buf = await fetch(posterUrl).then(r => r.ok ? r.arrayBuffer() : null);
+            if (buf && buf.byteLength > 500) {
+              await sock.sendMessage(from, { image: Buffer.from(buf), caption }, { quoted: waMsg });
+              return;
+            }
+          } catch {}
+        }
+        await reply(caption);
+      } catch {
+        await reply("❌ Could not fetch download links. Try again later.");
       }
       return;
     }
