@@ -990,21 +990,28 @@ registerCommand({
   category: "Owner",
   description: "Get bot uptime and system info",
   handler: async ({ reply }) => {
+    const { default: os } = await import("os");
     const uptime = process.uptime();
     const h = Math.floor(uptime / 3600);
     const m = Math.floor((uptime % 3600) / 60);
     const s = Math.floor(uptime % 60);
-    const mem = process.memoryUsage();
-    const heapMB = (mem.heapUsed / 1024 / 1024).toFixed(1);
-    const totalMB = (mem.heapTotal / 1024 / 1024).toFixed(1);
-    const rssMB = (mem.rss / 1024 / 1024).toFixed(1);
+    const totalB = os.totalmem();
+    const freeB  = os.freemem();
+    const usedB  = totalB - freeB;
+    const usedMB  = (usedB  / 1024 / 1024).toFixed(0);
+    const totalMB = (totalB / 1024 / 1024).toFixed(0);
+    const freeMB  = (freeB  / 1024 / 1024).toFixed(0);
+    const pct = Math.round((usedB / totalB) * 100);
+    const bar = "█".repeat(Math.round(pct / 10)) + "░".repeat(10 - Math.round(pct / 10));
     await reply(
       `⚙️ *Bot System Info*\n\n` +
       `⏱️ *Uptime:* ${h}h ${m}m ${s}s\n` +
-      `💾 *Heap Used:* ${heapMB} MB / ${totalMB} MB\n` +
-      `📦 *RSS:* ${rssMB} MB\n` +
+      `💾 *RAM Used:* ${usedMB} MB / ${totalMB} MB [${pct}%]\n` +
+      `🆓 *RAM Free:* ${freeMB} MB\n` +
+      `${bar}\n` +
       `⚡ *Node:* ${process.version}\n` +
-      `🖥️ *Platform:* ${process.platform}\n` +
+      `🖥️ *Platform:* ${process.platform} (${os.arch()})\n` +
+      `🧮 *CPU Cores:* ${os.cpus().length}\n` +
       `🕒 *Started:* ${new Date(Date.now() - uptime * 1000).toLocaleString()}${FOOTER}`
     );
   },
