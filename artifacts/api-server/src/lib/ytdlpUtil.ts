@@ -87,6 +87,39 @@ export async function getYtdlpBin(): Promise<string> {
   }
 }
 
+// ── YouTube search by scraping (no yt-dlp, no API key) ───────────────────────
+// Returns the YouTube video URL for the top result of a query.
+export async function searchYouTube(query: string): Promise<string> {
+  const searchUrl = `https://www.youtube.com/results?search_query=${encodeURIComponent(query)}&sp=EgIQAQ%3D%3D`;
+  const res = await fetch(searchUrl, {
+    headers: {
+      "User-Agent": "Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.0 Mobile/15E148 Safari/604.1",
+      "Accept-Language": "en-US,en;q=0.9",
+      "Accept": "text/html,application/xhtml+xml",
+    },
+  });
+  if (!res.ok) throw new Error(`YouTube search failed (HTTP ${res.status})`);
+  const html = await res.text();
+
+  // ytInitialData contains all video IDs in "videoId":"..." patterns
+  const matches = html.matchAll(/"videoId":"([a-zA-Z0-9_-]{11})"/g);
+  for (const m of matches) {
+    const id = m[1];
+    // Skip YouTube Shorts / ads / playlists that sneak in
+    if (id) return `https://www.youtube.com/watch?v=${id}`;
+  }
+  throw new Error(`No results found for "${query}"`);
+}
+
+// ── yt-dlp base args — iOS client bypasses YouTube bot detection on server IPs ──
+function ytdlpBaseArgs(): string[] {
+  return [
+    "--no-warnings",
+    "--extractor-args", "youtube:player_client=ios",
+    "--no-playlist",
+  ];
+}
+
 export interface YtdlpInfo {
   title: string;
   duration: number;
@@ -94,11 +127,11 @@ export interface YtdlpInfo {
   thumbnail: string;
 }
 
-export async function getVideoInfo(query: string): Promise<YtdlpInfo> {
+export async function getVideoInfo(urlOrQuery: string): Promise<YtdlpInfo> {
   const bin = await getYtdlpBin();
-  const url = query.startsWith("http") ? query : `ytsearch1:${query}`;
+  const url = urlOrQuery.startsWith("http") ? urlOrQuery : await searchYouTube(urlOrQuery);
   const { stdout } = await execFileAsync(bin, [
-    "--no-warnings", "-J", "--no-playlist", url,
+    ...ytdlpBaseArgs(), "-J", url,
   ], { timeout: 30000, maxBuffer: 10 * 1024 * 1024 });
   const info = JSON.parse(stdout);
   return {
@@ -109,11 +142,11 @@ export async function getVideoInfo(query: string): Promise<YtdlpInfo> {
   };
 }
 
-export async function downloadAudio(query: string, maxDurationSec = 600): Promise<{ buffer: Buffer; title: string; duration: number }> {
+export async function downloadAudio(urlOrQuery: string, maxDurationSec = 600): Promise<{ buffer: Buffer; title: string; duration: number }> {
   const bin = await getYtdlpBin();
-  const url = query.startsWith("http") ? query : `ytsearch1:${query}`;
+  const url = urlOrQuery.startsWith("http") ? urlOrQuery : await searchYouTube(urlOrQuery);
 
-  const info = await getVideoInfo(query);
+  const info = await getVideoInfo(url);
   if (info.duration > maxDurationSec) {
     throw new Error(`Too long (${Math.floor(info.duration / 60)} min). Max is ${maxDurationSec / 60} min.`);
   }
@@ -121,11 +154,11 @@ export async function downloadAudio(query: string, maxDurationSec = 600): Promis
   const tmpBase = `/tmp/ytaudio_${Date.now()}`;
   const ffdir = ffmpegDir();
   const args = [
-    "--no-warnings", "-x",
+    ...ytdlpBaseArgs(),
+    "-x",
     "--audio-format", "mp3",
     "--audio-quality", "5",
     "-o", `${tmpBase}.%(ext)s`,
-    "--no-playlist",
     ...(ffdir ? ["--ffmpeg-location", ffdir] : []),
     url,
   ];
@@ -147,11 +180,11 @@ export async function downloadAudio(query: string, maxDurationSec = 600): Promis
   return { buffer, title: info.title, duration: info.duration };
 }
 
-export async function downloadVideo(query: string, maxDurationSec = 300): Promise<{ buffer: Buffer; title: string; duration: number }> {
+export async function downloadVideo(urlOrQuery: string, maxDurationSec = 300): Promise<{ buffer: Buffer; title: string; duration: number }> {
   const bin = await getYtdlpBin();
-  const url = query.startsWith("http") ? query : `ytsearch1:${query}`;
+  const url = urlOrQuery.startsWith("http") ? urlOrQuery : await searchYouTube(urlOrQuery);
 
-  const info = await getVideoInfo(query);
+  const info = await getVideoInfo(url);
   if (info.duration > maxDurationSec) {
     throw new Error(`Too long (${Math.floor(info.duration / 60)} min). Max is ${maxDurationSec / 60} min.`);
   }
@@ -159,11 +192,10 @@ export async function downloadVideo(query: string, maxDurationSec = 300): Promis
   const tmpBase = `/tmp/ytvideo_${Date.now()}`;
   const ffdir = ffmpegDir();
   const args = [
-    "--no-warnings",
+    ...ytdlpBaseArgs(),
     "-f", "bestvideo[height<=480][ext=mp4]+bestaudio[ext=m4a]/best[height<=480][ext=mp4]/best[height<=480]/best",
     "--merge-output-format", "mp4",
     "-o", `${tmpBase}.%(ext)s`,
-    "--no-playlist",
     ...(ffdir ? ["--ffmpeg-location", ffdir] : []),
     url,
   ];
