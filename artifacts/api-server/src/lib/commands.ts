@@ -1213,7 +1213,7 @@ export async function handleMessage(sock: WASocket, msg: WAMessage) {
     return;
   }
 
-  // Auto-react to command — send sticker + emoji reaction
+  // Auto-react to command with a random emoji from a large pool
   if (settings.autoreaction) {
     const REACT_POOL = [
       "⚡","🔥","💫","✨","🌟","💎","🚀","🎯","💥","🎊","🎉","🌈","💪","🙌","👏",
@@ -1223,13 +1223,6 @@ export async function handleMessage(sock: WASocket, msg: WAMessage) {
     ];
     const react = REACT_POOL[Math.floor(Math.random() * REACT_POOL.length)];
     try { await sock.sendMessage(from, { react: { text: react, key: msg.key } }); } catch {}
-    // Send sticker as auto-reaction
-    try {
-      const stickerBuf = await getAutoSticker();
-      if (stickerBuf) {
-        await sock.sendMessage(from, { sticker: stickerBuf, mimetype: "image/webp" } as any, { quoted: msg });
-      }
-    } catch {}
   }
 
   // Fetch group metadata if needed
