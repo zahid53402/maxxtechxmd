@@ -77,7 +77,11 @@ export async function startBotSession(sessionId = "main"): Promise<WASocket> {
   sock.ev.on("messages.upsert", async ({ messages, type }) => {
     if (type !== "notify") return;
     for (const msg of messages) {
-      await handleMessage(sock, msg);
+      try {
+        await handleMessage(sock, msg);
+      } catch (err) {
+        logger.error({ err }, "Unhandled error in message handler — skipping message");
+      }
     }
   });
 
