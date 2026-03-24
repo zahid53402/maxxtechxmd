@@ -1206,21 +1206,118 @@ export async function handleMessage(sock: WASocket, msg: WAMessage) {
 
   // ── Command routing ─────────────────────────────────────────────────────────
   if (!body.startsWith(prefix)) {
-    // Chatbot auto-reply — powered by Copilot AI
+    // ── Chatbot — multi-layer AI with smart fallback ───────────────────────
     if (settings.chatbot) {
       const q = body.trim();
       if (q) {
-        try {
-          await sock.sendPresenceUpdate("composing", from);
-          const res = await fetch(`https://api.eliteprotech.com/copilot?q=${encodeURIComponent(q)}`);
-          const data = await res.json() as any;
-          const reply = data.response || data.answer || data.text || data.message || data.result || "";
-          if (reply) {
-            await sock.sendMessage(from, { text: reply + "\n\n> _MAXX-XMD_ ⚡" }, { quoted: msg });
-          }
-        } catch {
-          // silently ignore AI failures
+        try { await sock.sendPresenceUpdate("composing", from); } catch {}
+
+        // ── Helper: try eliteprotech Copilot (primary AI) ──────────────────
+        async function tryElite(question: string): Promise<string> {
+          const res = await fetch(`https://api.eliteprotech.com/copilot?q=${encodeURIComponent(question)}`, { signal: AbortSignal.timeout(8000) });
+          if (!res.ok) throw new Error("http " + res.status);
+          const d = await res.json() as any;
+          const txt = d.response || d.answer || d.text || d.message || d.result || "";
+          if (!txt) throw new Error("empty");
+          return txt;
         }
+
+        // ── Helper: Wikipedia for "what is / who is" factual queries ───────
+        async function tryWikipedia(question: string): Promise<string> {
+          const match = question.match(/(?:what is|who is|tell me about|explain|define)\s+(.+)/i);
+          if (!match) throw new Error("not factual");
+          const topic = match[1].trim().replace(/\s+/g, "_");
+          const res = await fetch(`https://en.wikipedia.org/api/rest_v1/page/summary/${encodeURIComponent(topic)}`, { signal: AbortSignal.timeout(6000) });
+          if (!res.ok) throw new Error("not found");
+          const d = await res.json() as any;
+          if (!d.extract) throw new Error("no extract");
+          return `📖 *${d.title}*\n\n${d.extract.slice(0, 400)}${d.extract.length > 400 ? "..." : ""}`;
+        }
+
+        // ── Smart local fallback — always responds ─────────────────────────
+        function localSmartReply(question: string): string {
+          const q2 = question.toLowerCase().trim();
+          const now = new Date();
+          const timeStr = now.toLocaleTimeString("en-US", { hour: "2-digit", minute: "2-digit" });
+          const dateStr = now.toDateString();
+
+          // Greetings
+          if (/^(hi|hello|hey|heyy|sup|wassup|what'?s up|howdy|yo|hola)/.test(q2))
+            return ["Hey there! 👋 How can I help you today?", "Hello! 😊 What can I do for you?", "Hi! I'm MAXX-XMD 🤖 How are you?", "Hey! Great to hear from you 😄"][Math.floor(Math.random() * 4)];
+
+          // How are you
+          if (/how are you|how r u|how're you|how do you do|you okay|u good/.test(q2))
+            return "I'm doing great, thanks for asking! 😊 How are you doing today?";
+
+          // Good morning/night/evening
+          if (/good morning/.test(q2)) return "Good morning! ☀️ Hope you have an amazing day ahead!";
+          if (/good night|gn\b/.test(q2)) return "Good night! 🌙 Sweet dreams! Rest well 😴";
+          if (/good evening|good afternoon/.test(q2)) return "Good evening! 🌆 Hope your day went well!";
+
+          // Time and date
+          if (/what.*time|current time|time now/.test(q2)) return `🕐 The current time is *${timeStr}*`;
+          if (/what.*date|today.*date|current date/.test(q2)) return `📅 Today is *${dateStr}*`;
+          if (/what.*day/.test(q2)) return `📅 Today is *${["Sunday","Monday","Tuesday","Wednesday","Thursday","Friday","Saturday"][now.getDay()]}*`;
+
+          // Bot identity
+          if (/who are you|what are you|your name|who made you|who created you/.test(q2))
+            return "I'm *MAXX-XMD* 🤖 — a powerful WhatsApp bot! I have 450+ commands covering downloads, AI, games, economy, stickers, and more. Type `.menu` to see everything I can do! ⚡";
+
+          // What can you do
+          if (/what can you do|your features|your commands|show commands|help/.test(q2))
+            return `🤖 I'm *MAXX-XMD* with 450+ commands!\n\nCategories:\n🤖 AI & Chat\n⬇️ Downloads (TikTok, IG, YT)\n🎮 Games (Wordle, Hangman)\n🪙 Economy System\n🎭 Sticker Creation\n🌍 Country & Weather\n📚 Education\n✍️ Writing Tools\n\nType *.menu* to explore all!`;
+
+          // Thanks
+          if (/thank|thanks|thx|thnx|ty\b/.test(q2)) return ["You're welcome! 😊 Anything else?", "Happy to help! 🙌", "Anytime! 😄 That's what I'm here for!"][Math.floor(Math.random() * 3)];
+
+          // Bye
+          if (/^(bye|goodbye|cya|see you|ttyl|later)\b/.test(q2)) return "Goodbye! 👋 Come back anytime! 😊";
+
+          // Love
+          if (/i love you|love u|luv u/.test(q2)) return "Aww 🥰 I love you too! (in a bot kind of way 😄)";
+
+          // Compliments
+          if (/you.*great|you.*amazing|you.*awesome|good bot|nice bot/.test(q2)) return "Thank you so much! 😊🙏 That means a lot!";
+
+          // Insults
+          if (/you.*stupid|you.*dumb|you.*useless|you.*suck/.test(q2)) return "Ouch 😅 I'm trying my best! Cut me some slack 🙏";
+
+          // Jokes
+          if (/tell.*joke|joke|make me laugh/.test(q2)) {
+            const jokes = ["Why do programmers prefer dark mode? Because light attracts bugs! 🐛😂", "Why don't scientists trust atoms? Because they make up everything! 😂", "I told my wife she should embrace her mistakes. She gave me a hug 😂"];
+            return jokes[Math.floor(Math.random() * jokes.length)];
+          }
+
+          // Random facts
+          if (/tell.*fact|random fact|fun fact/.test(q2)) {
+            const facts = ["🧠 Your brain generates enough electricity to power a small light bulb!", "🐬 Dolphins sleep with one eye open!", "🍯 Honey never expires — archaeologists found 3000-year-old edible honey in Egypt!", "🦈 Sharks are older than trees — they've existed for 400 million years!"];
+            return facts[Math.floor(Math.random() * facts.length)];
+          }
+
+          // Motivation
+          if (/motivat|inspire|encourage|i.*sad|feeling down|depressed/.test(q2))
+            return "💪 *Remember:* Every expert was once a beginner. Every champion was once a contender that refused to give up. Keep going — your breakthrough is closer than you think! 🌟";
+
+          // Generic smart response
+          const generics = [
+            "That's interesting! 🤔 Could you tell me more?",
+            "I see! 😊 Is there anything specific you need help with? Type *.menu* to see all my commands!",
+            "Interesting thought! If you need help with something, just ask or type *.menu* 📋",
+            "I'm not 100% sure how to respond to that, but I'm always here if you need me! 😊",
+            "Got it! Type *.menu* to see all the amazing things I can do for you ⚡",
+          ];
+          return generics[Math.floor(Math.random() * generics.length)];
+        }
+
+        // ── Try AI → Wikipedia → Smart fallback ───────────────────────────
+        let responseText = "";
+        try { responseText = await tryElite(q); } catch {}
+        if (!responseText) { try { responseText = await tryWikipedia(q); } catch {} }
+        if (!responseText) { responseText = localSmartReply(q); }
+
+        try {
+          await sock.sendMessage(from, { text: responseText + "\n\n> _MAXX-XMD_ ⚡" }, { quoted: msg });
+        } catch {}
       }
     }
     return;
