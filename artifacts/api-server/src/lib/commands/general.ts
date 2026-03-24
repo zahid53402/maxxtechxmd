@@ -421,34 +421,198 @@ _Data from CoinGecko_`);
 
 registerCommand({
   name: "hack",
-  aliases: ["hacking", "breach"],
+  aliases: ["hacking", "breach", "hackip", "cyberattack"],
   category: "Fun",
-  description: "Fake hacking simulation (for fun)",
-  handler: async ({ args, reply }) => {
-    const target = args.join(" ") || "Unknown Target";
-    await reply(`╔══════════════════════╗
-║ 💻 *HACKING INITIATED* 💻
-╚══════════════════════╝
+  description: "Realistic animated hack simulation with real IP/user lookup (.hack <target>)",
+  usage: ".hack <name/ip/username>",
+  handler: async ({ args, sock, from, msg }) => {
+    const target = args.join(" ").trim() || "Target";
+    const sleep = (ms: number) => new Promise(r => setTimeout(r, ms));
+    const send = (text: string) => sock.sendMessage(from, { text }, { quoted: msg });
 
-🎯 *Target:* ${target}
+    // ── Generate realistic-looking fake data ─────────────────────────────────
+    const randomIp = () => `${randInt(1,254)}.${randInt(0,255)}.${randInt(0,255)}.${randInt(1,254)}`;
+    const randomMac = () => Array.from({length:6}, () => randHex(2)).join(":");
+    const randomPort = () => [21,22,23,25,53,80,110,143,443,3306,3389,5900,8080][Math.floor(Math.random()*13)];
+    const randomHash = (len: number) => Array.from({length:len}, () => randHex(2)).join("");
+    const isIp = /^\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}$/.test(target);
 
-📡 Connecting to server...
-🔐 Bypassing firewall...
-🧠 Injecting exploit...
-📂 Extracting data...
-🔓 Cracking password...
-📡 Rerouting through VPN...
+    // ── Try to fetch real data about the target ──────────────────────────────
+    let realData: Record<string, string> = {};
+    try {
+      if (isIp) {
+        const r = await fetch(`http://ip-api.com/json/${target}?fields=country,regionName,city,isp,org,lat,lon,timezone,mobile,proxy`, { signal: AbortSignal.timeout(5000) });
+        const d = await r.json() as any;
+        if (d.country) {
+          realData = { country: d.country, city: d.city || "Unknown", isp: d.isp || "Unknown", org: d.org || d.isp || "Unknown", lat: String(d.lat || "?"), lon: String(d.lon || "?"), tz: d.timezone || "Unknown", proxy: d.proxy ? "VPN/Proxy Detected ⚠️" : "None detected" };
+        }
+      } else {
+        // Try GitHub username lookup
+        const r = await fetch(`https://api.github.com/users/${encodeURIComponent(target)}`, { signal: AbortSignal.timeout(5000) });
+        if (r.ok) {
+          const d = await r.json() as any;
+          realData = { gh_name: d.name || target, gh_login: d.login, gh_repos: String(d.public_repos || 0), gh_followers: String(d.followers || 0), gh_location: d.location || "Unknown", gh_bio: d.bio || "No bio", gh_created: new Date(d.created_at).getFullYear().toString() };
+        }
+      }
+    } catch { /* real lookup failed, continue with simulation */ }
 
-✅ *HACK SUCCESSFUL!* 😈
+    const ip = isIp ? target : randomIp();
+    const proxyChain = [randomIp(), randomIp(), randomIp()];
+    const openPort = randomPort();
+    const macAddr = randomMac();
+    const sessionToken = randomHash(16);
+    const encKey = randomHash(32);
+    const countries = ["🇳🇱 Netherlands","🇩🇪 Germany","🇺🇸 United States","🇸🇬 Singapore","🇫🇷 France","🇷🇺 Russia"];
+    const exitNode = realData.country ? `${realData.country}` : countries[Math.floor(Math.random()*countries.length)];
+    const city = realData.city || ["Amsterdam","Berlin","Dallas","Singapore","Paris","Moscow"][Math.floor(Math.random()*6)];
+    const isp = realData.isp || ["Cloudflare Inc","AWS","DigitalOcean","OVH SAS","Hetzner Online GmbH"][Math.floor(Math.random()*5)];
 
-📁 Files dumped
-📸 Media accessed
-📞 Contacts synced
-💳 Data secured
+    // ── PHASE 1: Initiation ──────────────────────────────────────────────────
+    await send(
+      `╔══════════════════════════════╗\n` +
+      `║  💻 *MAXX-XMD CYBER TERMINAL* ║\n` +
+      `╚══════════════════════════════╝\n\n` +
+      `🎯 *Target:* \`${target}\`\n` +
+      `🕒 *Timestamp:* ${new Date().toISOString()}\n` +
+      `🔑 *Session:* \`${sessionToken}\`\n\n` +
+      `> _Initializing attack sequence..._`
+    );
+    await sleep(1800);
 
-⚠️ _This is a fake simulation for fun only._`);
+    // ── PHASE 2: Network recon ───────────────────────────────────────────────
+    await send(
+      `📡 *[PHASE 1] Network Reconnaissance*\n` +
+      `${"─".repeat(30)}\n\n` +
+      `🔍 Resolving target...\n` +
+      `   └─ IP Address: \`${ip}\`\n\n` +
+      `🌐 Routing through proxy chain:\n` +
+      `   ├─ Hop 1: \`${proxyChain[0]}\` (TOR Node)\n` +
+      `   ├─ Hop 2: \`${proxyChain[1]}\` (VPN Exit)\n` +
+      `   └─ Hop 3: \`${proxyChain[2]}\` → Target\n\n` +
+      `📍 *Geolocation:*\n` +
+      `   ├─ Location: ${exitNode}${city !== exitNode ? ", " + city : ""}\n` +
+      `   ├─ ISP: ${isp}\n` +
+      (realData.lat ? `   ├─ Coords: ${realData.lat}, ${realData.lon}\n` : "") +
+      (realData.tz ? `   └─ Timezone: ${realData.tz}\n` : `   └─ Timezone: UTC+${randInt(0,12)}\n`) +
+      `\n✅ _Geolocation mapped_`
+    );
+    await sleep(2200);
+
+    // ── PHASE 3: Port scan ───────────────────────────────────────────────────
+    const allPorts = [22, 80, 443, 3306, 3389, 8080, 21, 25];
+    const openPorts = allPorts.filter(() => Math.random() > 0.5);
+    if (!openPorts.includes(openPort)) openPorts.push(openPort);
+    await send(
+      `🔬 *[PHASE 2] Port Scan & Service Detection*\n` +
+      `${"─".repeat(30)}\n\n` +
+      `⚡ Running Nmap aggressive scan...\n\n` +
+      openPorts.map(p => {
+        const svc: Record<number,string> = {22:"SSH",80:"HTTP",443:"HTTPS/TLS",3306:"MySQL",3389:"RDP",8080:"HTTP-Alt",21:"FTP",25:"SMTP"};
+        return `   ✅ Port \`${p}\` — ${svc[p] || "Unknown"} *OPEN*`;
+      }).join("\n") +
+      `\n\n🔎 MAC Address: \`${macAddr}\`\n` +
+      `💥 *Vulnerable port selected:* \`${openPort}\`\n\n` +
+      `✅ _Attack surface identified_`
+    );
+    await sleep(2000);
+
+    // ── PHASE 4: Exploitation ────────────────────────────────────────────────
+    const exploits: Record<number, string> = {
+      22: "SSH brute-force (rockyou.txt wordlist)",
+      80: "SQL injection via login endpoint",
+      443: "SSL heartbleed exploit (CVE-2014-0160)",
+      3306: "MySQL root default credentials",
+      3389: "BlueKeep RDP exploit (CVE-2019-0708)",
+      8080: "HTTP Basic auth bypass",
+      21: "FTP anonymous login + path traversal",
+      25: "SMTP open relay abuse",
+    };
+    const exploit = exploits[openPort] || "Zero-day buffer overflow";
+    await send(
+      `💥 *[PHASE 3] Exploitation*\n` +
+      `${"─".repeat(30)}\n\n` +
+      `🧠 Loading exploit module...\n` +
+      `   └─ *${exploit}*\n\n` +
+      `⚙️ Compiling payload...\n` +
+      `   ├─ Encoder: x86/shikata_ga_nai\n` +
+      `   ├─ Iterations: ${randInt(3,12)}\n` +
+      `   └─ Payload size: ${randInt(350,900)} bytes\n\n` +
+      `📤 Sending payload to \`${ip}:${openPort}\`...\n` +
+      `   ├─ Attempt 1/3: ❌ Firewall blocked\n` +
+      `   ├─ Attempt 2/3: ❌ IDS triggered — switching encoder\n` +
+      `   └─ Attempt 3/3: ✅ *Shell dropped!*\n\n` +
+      `✅ _Remote code execution achieved_`
+    );
+    await sleep(2400);
+
+    // ── PHASE 5: Data extraction ─────────────────────────────────────────────
+    const fileCount = randInt(200, 9999);
+    const dbRows = randInt(1000, 500000);
+    const contacts = randInt(50, 800);
+    const photos = randInt(100, 5000);
+
+    let extracted = `📂 *[PHASE 4] Data Extraction*\n` +
+      `${"─".repeat(30)}\n\n` +
+      `🔓 Escalating to root privileges...\n` +
+      `   └─ UID: 0 (root) ✅\n\n` +
+      `📁 Scanning filesystem...\n` +
+      `   ├─ *${fileCount.toLocaleString()} files* found\n` +
+      `   ├─ *${photos.toLocaleString()} media files* (photos/videos)\n` +
+      `   ├─ *${contacts.toLocaleString()} contacts* extracted\n` +
+      `   └─ Encryption key: \`${encKey.slice(0,16)}...\`\n\n` +
+      `🗃️ Dumping database...\n` +
+      `   ├─ Tables: ${randInt(5,50)} found\n` +
+      `   ├─ Rows: *${dbRows.toLocaleString()}* records\n` +
+      `   └─ Passwords: ${randInt(100,10000).toLocaleString()} hashes extracted\n\n`;
+
+    if (realData.gh_login) {
+      extracted +=
+        `👤 *GitHub Profile Found:*\n` +
+        `   ├─ Login: \`${realData.gh_login}\`\n` +
+        `   ├─ Name: ${realData.gh_name}\n` +
+        `   ├─ Location: ${realData.gh_location}\n` +
+        `   ├─ Repos: ${realData.gh_repos}  Followers: ${realData.gh_followers}\n` +
+        `   ├─ Account since: ${realData.gh_created}\n` +
+        `   └─ Bio: _${(realData.gh_bio || "").slice(0,60)}_\n\n`;
+    }
+
+    if (realData.proxy) {
+      extracted += `🛡️ *Proxy/VPN Status:* ${realData.proxy}\n\n`;
+    }
+
+    extracted += `✅ _All data exfiltrated via encrypted tunnel_`;
+    await send(extracted);
+    await sleep(2200);
+
+    // ── PHASE 6: Covering tracks + result ────────────────────────────────────
+    await send(
+      `🧹 *[PHASE 5] Covering Tracks*\n` +
+      `${"─".repeat(30)}\n\n` +
+      `🗑️ Wiping system logs...\n` +
+      `   ├─ /var/log/auth.log — ✅ Cleared\n` +
+      `   ├─ /var/log/syslog — ✅ Cleared\n` +
+      `   ├─ bash history — ✅ Overwritten\n` +
+      `   └─ Network traces — ✅ Flushed\n\n` +
+      `🔌 Closing backdoor...\n` +
+      `🔒 Encrypting exfiltrated data...\n` +
+      `📡 Disconnecting all proxy hops...\n\n` +
+      `╔══════════════════════════════╗\n` +
+      `║   ✅ *HACK COMPLETE!* 😈      ║\n` +
+      `╚══════════════════════════════╝\n\n` +
+      `🎯 Target: *${target}*\n` +
+      `🌐 IP: \`${ip}\`\n` +
+      `📁 Files: *${fileCount.toLocaleString()}* stolen\n` +
+      `📞 Contacts: *${contacts.toLocaleString()}* synced\n` +
+      `🗃️ DB Records: *${dbRows.toLocaleString()}* dumped\n` +
+      `📸 Media: *${photos.toLocaleString()}* accessed\n` +
+      `⏱️ Duration: *${(6.2 + Math.random()*3).toFixed(1)}s*\n\n` +
+      `> ⚠️ _This is a fun simulation. No real hacking occurred._\n> _MAXX-XMD_ ⚡`
+    );
   },
 });
+
+function randInt(min: number, max: number) { return Math.floor(Math.random() * (max - min + 1)) + min; }
+function randHex(len: number) { return Math.floor(Math.random() * Math.pow(16, len)).toString(16).padStart(len, "0"); }
 
 registerCommand({
   name: "device",
