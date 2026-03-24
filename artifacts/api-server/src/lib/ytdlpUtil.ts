@@ -93,9 +93,9 @@ export async function searchYouTube(query: string): Promise<string> {
   const searchUrl = `https://www.youtube.com/results?search_query=${encodeURIComponent(query)}&sp=EgIQAQ%3D%3D`;
   const res = await fetch(searchUrl, {
     headers: {
-      "User-Agent": "Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.0 Mobile/15E148 Safari/604.1",
+      "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
       "Accept-Language": "en-US,en;q=0.9",
-      "Accept": "text/html,application/xhtml+xml",
+      "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
     },
   });
   if (!res.ok) throw new Error(`YouTube search failed (HTTP ${res.status})`);
