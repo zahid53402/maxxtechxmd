@@ -11,7 +11,6 @@ registerCommand({
   aliases: [],
   category: "Owner",
   description: "Block a user",
-  ownerOnly: true,
   handler: async ({ sock, msg, args, reply }) => {
     const mentioned = msg.message?.extendedTextMessage?.contextInfo?.mentionedJid?.[0];
     let num = args[0]?.replace(/[^0-9]/g, "");
@@ -31,7 +30,6 @@ registerCommand({
   aliases: [],
   category: "Owner",
   description: "Unblock a user",
-  ownerOnly: true,
   handler: async ({ sock, msg, args, reply }) => {
     const mentioned = msg.message?.extendedTextMessage?.contextInfo?.mentionedJid?.[0];
     let num = args[0]?.replace(/[^0-9]/g, "");
@@ -51,7 +49,6 @@ registerCommand({
   aliases: [],
   category: "Owner",
   description: "List blocked contacts",
-  ownerOnly: true,
   handler: async ({ sock, reply }) => {
     try {
       const blocked = await sock.fetchBlocklist();
@@ -69,7 +66,6 @@ registerCommand({
   aliases: [],
   category: "Owner",
   description: "Join a group via invite link",
-  ownerOnly: true,
   handler: async ({ sock, args, reply }) => {
     const link = args[0];
     if (!link) return reply("❌ Provide invite link. Example: .join https://chat.whatsapp.com/xxxxx");
@@ -90,7 +86,6 @@ registerCommand({
   category: "Owner",
   description: "Leave current group",
   groupOnly: true,
-  ownerOnly: true,
   handler: async ({ sock, from, reply }) => {
     await reply("👋 Leaving the group...");
     try { await sock.groupLeave(from); } catch {}
@@ -102,7 +97,6 @@ registerCommand({
   aliases: [],
   category: "Owner",
   description: "Restart the bot",
-  ownerOnly: true,
   handler: async ({ reply }) => {
     await reply("🔄 *MAXX XMD is restarting...*\n\n_Please wait a few seconds_");
     setTimeout(() => process.exit(0), 1500);
@@ -114,7 +108,6 @@ registerCommand({
   aliases: [],
   category: "Owner",
   description: "Broadcast a message to all chats",
-  ownerOnly: true,
   handler: async ({ sock, args, reply }) => {
     const text = args.join(" ");
     if (!text) return reply("❓ Usage: .broadcast <message>");
@@ -127,7 +120,6 @@ registerCommand({
   aliases: ["bio"],
   category: "Owner",
   description: "Update bot's WhatsApp bio/about",
-  ownerOnly: true,
   handler: async ({ sock, args, reply }) => {
     const bio = args.join(" ");
     if (!bio) return reply("❓ Usage: .setbio <text>");
@@ -145,7 +137,6 @@ registerCommand({
   aliases: ["setpp", "setavatar"],
   category: "Owner",
   description: "Set bot profile picture (reply to image)",
-  ownerOnly: true,
   handler: async ({ sock, msg, reply }) => {
     const quoted = msg.message?.extendedTextMessage?.contextInfo?.quotedMessage;
     const imgMsg = quoted?.imageMessage;
@@ -184,7 +175,6 @@ registerCommand({
   aliases: [],
   category: "Owner",
   description: "Post quoted media to your status",
-  ownerOnly: true,
   handler: async ({ sock, msg, reply }) => {
     const quoted = msg.message?.extendedTextMessage?.contextInfo?.quotedMessage;
     if (!quoted) return reply("❌ Reply to a media message.");
@@ -215,7 +205,6 @@ registerCommand({
   aliases: [],
   category: "Owner",
   description: "Toggle last seen visibility",
-  ownerOnly: true,
   handler: async ({ args, settings, reply }) => {
     const val = args[0]?.toLowerCase();
     if (!val || !["on", "off"].includes(val)) return reply("❓ Usage: .lastseen on/off");
@@ -230,7 +219,6 @@ registerCommand({
   aliases: [],
   category: "Owner",
   description: "Toggle read receipts (blue ticks)",
-  ownerOnly: true,
   handler: async ({ args, settings, reply }) => {
     const val = args[0]?.toLowerCase();
     if (!val || !["on", "off"].includes(val)) return reply("❓ Usage: .readreceipts on/off");
@@ -245,7 +233,6 @@ registerCommand({
   aliases: [],
   category: "Owner",
   description: "Warn a user",
-  ownerOnly: true,
   handler: async ({ msg, args, settings, sock, from, groupMetadata, reply }) => {
     const mentioned = msg.message?.extendedTextMessage?.contextInfo?.mentionedJid?.[0];
     if (!mentioned) return reply("❌ Mention user. Example: .warn @user reason");
@@ -271,7 +258,6 @@ registerCommand({
   aliases: [],
   category: "Owner",
   description: "List all user warnings",
-  ownerOnly: true,
   handler: async ({ reply }) => {
     const entries = Object.entries(warnStore).filter(([, v]) => v.count > 0);
     if (!entries.length) return reply("📋 No active warnings.");
@@ -287,7 +273,6 @@ registerCommand({
   aliases: [],
   category: "Owner",
   description: "Reset warnings for a user",
-  ownerOnly: true,
   handler: async ({ msg, reply }) => {
     const mentioned = msg.message?.extendedTextMessage?.contextInfo?.mentionedJid?.[0];
     if (!mentioned) return reply("❌ Mention user. Example: .resetwarn @user");
@@ -301,7 +286,6 @@ registerCommand({
   aliases: ["storage"],
   category: "Owner",
   description: "Show disk usage",
-  ownerOnly: true,
   handler: async ({ reply }) => {
     try {
       const { stdout } = await execAsync("df -h / 2>/dev/null | tail -1");
@@ -318,7 +302,6 @@ registerCommand({
   aliases: [],
   category: "Owner",
   description: "Get the server IP address",
-  ownerOnly: true,
   handler: async ({ reply }) => {
     try {
       const res = await fetch("https://api.ipify.org?format=json");
@@ -403,7 +386,6 @@ registerCommand({
   aliases: [],
   category: "Owner",
   description: "Check for bot updates",
-  ownerOnly: true,
   handler: async ({ reply }) => {
     await reply("🔍 *Checking for updates...*\n\n✅ You are running *MAXX XMD v2.0.0*\n\n🔗 Check: https://github.com/Carlymaxx/maxxtechxmd");
   },
