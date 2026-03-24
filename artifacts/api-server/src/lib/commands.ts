@@ -671,6 +671,355 @@ for (const cmd of aiCommands) {
   });
 }
 
+// ---- DOWNLOAD: MISSING COMMANDS ----
+registerCommand({
+  name: "pin",
+  aliases: ["pinterest"],
+  category: "Download",
+  description: "Download Pinterest image/video",
+  handler: async ({ args, reply }) => {
+    const url = args[0];
+    if (!url?.includes("pinterest")) return reply("❓ Usage: .pin <Pinterest URL>\nExample: .pin https://pinterest.com/pin/123456");
+    await reply(`📌 *Pinterest Downloader*\n\nTo download this pin:\n1. Visit: https://savephoto.net\n2. Paste: ${url}\n3. Click Download\n\n> _MAXX XMD_ ⚡`);
+  },
+});
+
+registerCommand({
+  name: "savestatus",
+  aliases: ["statusdl"],
+  category: "Download",
+  description: "Save WhatsApp status",
+  handler: async ({ reply }) => {
+    await reply(`📱 *Save WhatsApp Status*\n\nTo save someone's status:\n\n📲 *Android:* Use "Status Saver" app from Play Store\n🍎 *iPhone:* Use "Wstat" from App Store\n\n💡 _Bots cannot directly access others' statuses due to WhatsApp's privacy system._\n\n> _MAXX XMD_ ⚡`);
+  },
+});
+
+registerCommand({
+  name: "apk",
+  aliases: [],
+  category: "Download",
+  description: "Search and download an APK",
+  handler: async ({ args, reply }) => {
+    const query = args.join(" ");
+    if (!query) return reply("❓ Usage: .apk <app name>\nExample: .apk WhatsApp");
+    const url = `https://apkpure.com/search?q=${encodeURIComponent(query)}`;
+    await reply(`📦 *APK Search: ${query}*\n\n🔗 Click to find on APKPure:\n${url}\n\n⚠️ _Only install APKs from trusted sources!_\n\n> _MAXX XMD_ ⚡`);
+  },
+});
+
+registerCommand({
+  name: "gitclone",
+  aliases: ["git"],
+  category: "Download",
+  description: "Get git clone command for any repo",
+  handler: async ({ args, reply }) => {
+    const url = args[0];
+    if (!url) return reply("❓ Usage: .gitclone <GitHub/GitLab URL>\nExample: .gitclone https://github.com/Carlymaxx/maxxtechxmd");
+    const name = url.replace(/\.git$/, "").split("/").slice(-1)[0] || "repo";
+    await reply(`📂 *Git Clone*\n\n\`\`\`\ngit clone ${url}\ncd ${name}\n\`\`\`\n\n📥 *Download ZIP:*\n${url.replace(/\.git$/, "")}/archive/refs/heads/main.zip\n\n> _MAXX XMD_ ⚡`);
+  },
+});
+
+registerCommand({
+  name: "mediafire",
+  aliases: ["mf"],
+  category: "Download",
+  description: "Get MediaFire direct download link",
+  handler: async ({ args, reply }) => {
+    const url = args[0];
+    if (!url?.includes("mediafire")) return reply("❓ Usage: .mediafire <MediaFire URL>\nExample: .mediafire https://www.mediafire.com/file/xxx");
+    await reply("⏳ Extracting download link...");
+    try {
+      const res = await fetch(url, { headers: { "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36" } });
+      const html = await res.text();
+      const match = html.match(/href="(https:\/\/download\d+\.mediafire\.com[^"]+)"/);
+      if (!match) throw new Error("No direct link found");
+      await reply(`✅ *MediaFire Direct Link*\n\n🔗 ${match[1]}\n\n> _MAXX XMD_ ⚡`);
+    } catch {
+      await reply(`📁 *MediaFire*\n\n_Could not auto-extract link. Visit directly:_\n🔗 ${url}\n\n> _MAXX XMD_ ⚡`);
+    }
+  },
+});
+
+registerCommand({
+  name: "itunes",
+  aliases: ["apple", "applemusic"],
+  category: "Download",
+  description: "Search iTunes/Apple Music for a song",
+  handler: async ({ args, reply }) => {
+    const query = args.join(" ");
+    if (!query) return reply("❓ Usage: .itunes <song or artist>\nExample: .itunes Shape of You");
+    try {
+      const res = await fetch(`https://itunes.apple.com/search?term=${encodeURIComponent(query)}&media=music&limit=5`);
+      const data = await res.json() as any;
+      if (!data.results?.length) return reply(`❌ No results found for: *${query}*`);
+      const list = data.results.map((r: any, i: number) => {
+        const dur = r.trackTimeMillis ? `${Math.floor(r.trackTimeMillis / 60000)}:${String(Math.floor((r.trackTimeMillis % 60000) / 1000)).padStart(2, "0")}` : "N/A";
+        return `${i + 1}. 🎵 *${r.trackName}*\n   👤 ${r.artistName}\n   💿 ${r.collectionName}\n   ⏱️ ${dur}\n   🔗 ${r.trackViewUrl}`;
+      }).join("\n\n");
+      await reply(`🎵 *iTunes Search: ${query}*\n\n${list}\n\n> _MAXX XMD_ ⚡`);
+    } catch {
+      await reply("❌ Could not search iTunes. Try again later.");
+    }
+  },
+});
+
+// ---- TOOLS: MISSING COMMANDS ----
+registerCommand({
+  name: "ssweb",
+  aliases: ["screenshot", "webss"],
+  category: "Tools",
+  description: "Take a screenshot of any website",
+  handler: async ({ sock, from, args, reply }) => {
+    const url = args[0];
+    if (!url) return reply("❓ Usage: .ssweb <URL>\nExample: .ssweb https://google.com");
+    await reply("⏳ Taking screenshot...");
+    try {
+      const ssUrl = `https://image.thum.io/get/width/1280/height/720/crop/720/noanimate/${url}`;
+      await sock.sendMessage(from, {
+        image: { url: ssUrl },
+        caption: `🌐 *Screenshot: ${url}*\n\n> _MAXX XMD_ ⚡`,
+      });
+    } catch {
+      await reply("❌ Could not take screenshot. Make sure the URL is valid and starts with http/https.");
+    }
+  },
+});
+
+registerCommand({
+  name: "tourl",
+  aliases: ["upload", "fileupload"],
+  category: "Tools",
+  description: "Upload media and get a shareable URL",
+  handler: async ({ msg, reply }) => {
+    const ctx = msg.message?.extendedTextMessage?.contextInfo;
+    const imgMsg = msg.message?.imageMessage || ctx?.quotedMessage?.imageMessage;
+    const vidMsg = msg.message?.videoMessage || ctx?.quotedMessage?.videoMessage;
+    const audMsg = msg.message?.audioMessage || ctx?.quotedMessage?.audioMessage;
+    const docMsg = msg.message?.documentMessage || ctx?.quotedMessage?.documentMessage;
+    const media = imgMsg || vidMsg || audMsg || docMsg;
+    if (!media) return reply("❌ Reply to or send a media message with .tourl");
+    await reply("⏳ Uploading to cloud...");
+    try {
+      let rawMsg: any;
+      let mime = "application/octet-stream";
+      let ext = "bin";
+      if (imgMsg) { rawMsg = { message: { imageMessage: imgMsg } }; mime = "image/jpeg"; ext = "jpg"; }
+      else if (vidMsg) { rawMsg = { message: { videoMessage: vidMsg } }; mime = "video/mp4"; ext = "mp4"; }
+      else if (audMsg) { rawMsg = { message: { audioMessage: audMsg } }; mime = "audio/mpeg"; ext = "mp3"; }
+      else { rawMsg = { message: { documentMessage: docMsg } }; }
+      const buf = await downloadMediaMessage(rawMsg as WAMessage, "buffer", {});
+      const blob = new Blob([buf as Buffer], { type: mime });
+      const form = new FormData();
+      form.append("reqtype", "fileupload");
+      form.append("fileToUpload", blob, `media.${ext}`);
+      const res = await fetch("https://catbox.moe/user/api.php", { method: "POST", body: form });
+      const url = (await res.text()).trim();
+      if (!url.startsWith("https://")) throw new Error("Upload failed");
+      await reply(`☁️ *Media Uploaded!*\n\n🔗 ${url}\n\n_Link is permanent. Keep it safe!_\n\n> _MAXX XMD_ ⚡`);
+    } catch (e: any) {
+      await reply(`❌ Upload failed: ${e.message}`);
+    }
+  },
+});
+
+registerCommand({
+  name: "emojimix",
+  aliases: ["ejmix", "mixemoji"],
+  category: "Tools",
+  description: "Mix two emojis using Google Emoji Kitchen",
+  handler: async ({ sock, from, args, reply }) => {
+    const [e1, e2] = args;
+    if (!e1 || !e2) return reply("❓ Usage: .emojimix <emoji1> <emoji2>\nExample: .emojimix 😂 😭");
+    try {
+      const cp1 = [...e1][0]?.codePointAt(0)?.toString(16);
+      const cp2 = [...e2][0]?.codePointAt(0)?.toString(16);
+      if (!cp1 || !cp2) throw new Error("Invalid emojis");
+      // Try multiple date versions of the Emoji Kitchen API
+      const dates = ["20201001", "20210218", "20210521", "20211115", "20220110", "20220406", "20220815"];
+      let sent = false;
+      for (const date of dates) {
+        const url = `https://www.gstatic.com/android/keyboard/emojikitchen/${date}/u${cp1}/u${cp1}_u${cp2}.png`;
+        try {
+          const test = await fetch(url, { method: "HEAD" });
+          if (test.ok) {
+            await sock.sendMessage(from, { image: { url }, caption: `✨ *Emoji Mix: ${e1} + ${e2}*\n\n> _MAXX XMD_ ⚡` });
+            sent = true;
+            break;
+          }
+        } catch {}
+      }
+      if (!sent) {
+        // Try reversed order
+        for (const date of dates) {
+          const url = `https://www.gstatic.com/android/keyboard/emojikitchen/${date}/u${cp2}/u${cp2}_u${cp1}.png`;
+          try {
+            const test = await fetch(url, { method: "HEAD" });
+            if (test.ok) {
+              await sock.sendMessage(from, { image: { url }, caption: `✨ *Emoji Mix: ${e1} + ${e2}*\n\n> _MAXX XMD_ ⚡` });
+              sent = true;
+              break;
+            }
+          } catch {}
+        }
+      }
+      if (!sent) throw new Error("Combination not available");
+    } catch {
+      await reply(`🎨 *Emoji Mix*\n\n${e1} + ${e2} = ${e1}${e2}\n\nTry more combinations at https://emojimix.app\n\n> _MAXX XMD_ ⚡`);
+    }
+  },
+});
+
+registerCommand({
+  name: "vcf",
+  aliases: ["contacts", "exportcontacts"],
+  category: "Tools",
+  description: "Export group contacts as VCF file",
+  groupOnly: true,
+  handler: async ({ sock, from, groupMetadata, reply }) => {
+    if (!groupMetadata) return reply("❌ Could not fetch group info.");
+    const members = groupMetadata.participants;
+    const vcfContent = members.map((m: any) => {
+      const num = m.id.split("@")[0];
+      return `BEGIN:VCARD\nVERSION:3.0\nFN:+${num}\nTEL;TYPE=CELL:+${num}\nEND:VCARD`;
+    }).join("\n");
+    const vcfBuf = Buffer.from(vcfContent, "utf8");
+    await sock.sendMessage(from, {
+      document: vcfBuf,
+      mimetype: "text/vcard",
+      fileName: `${groupMetadata.subject || "group"}_contacts.vcf`,
+      caption: `📇 *${members.length} contacts exported!*\n\nGroup: ${groupMetadata.subject}\n\n> _MAXX XMD_ ⚡`,
+    });
+  },
+});
+
+registerCommand({
+  name: "filtervcf",
+  aliases: ["cleanvcf"],
+  category: "Tools",
+  description: "Filter and clean a VCF contacts file",
+  handler: async ({ sock, from, msg, reply }) => {
+    const ctx = msg.message?.extendedTextMessage?.contextInfo;
+    const docMsg = msg.message?.documentMessage || ctx?.quotedMessage?.documentMessage;
+    if (!docMsg) return reply("❌ Reply to a VCF (.vcf) file with .filtervcf");
+    try {
+      const buf = await downloadMediaMessage({ message: { documentMessage: docMsg } } as WAMessage, "buffer", {});
+      const text = (buf as Buffer).toString("utf8");
+      const cards = text.split(/(?=BEGIN:VCARD)/g).filter(c => c.includes("TEL"));
+      if (!cards.length) return reply("❌ No valid contacts found in this VCF.");
+      const cleaned = cards.join("\n");
+      const filteredBuf = Buffer.from(cleaned, "utf8");
+      await sock.sendMessage(from, {
+        document: filteredBuf,
+        mimetype: "text/vcard",
+        fileName: "filtered_contacts.vcf",
+        caption: `✅ *Filtered VCF*\n\n📇 ${cards.length} valid contacts kept\n\n> _MAXX XMD_ ⚡`,
+      });
+    } catch (e: any) {
+      await reply(`❌ Failed to filter VCF: ${e.message}`);
+    }
+  },
+});
+
+registerCommand({
+  name: "texttopdf",
+  aliases: ["txt2pdf", "topdf"],
+  category: "Tools",
+  description: "Convert text to a PDF document",
+  handler: async ({ sock, from, args, reply }) => {
+    const text = args.join(" ");
+    if (!text) return reply("❓ Usage: .texttopdf <your text here>\nExample: .texttopdf Hello World, this is my document.");
+    await reply("⏳ Generating PDF...");
+    try {
+      const html = `<!DOCTYPE html><html><body style="font-family:Arial,sans-serif;font-size:14px;padding:50px;line-height:1.8;color:#222">${text.replace(/\n/g, "<br>")}</body></html>`;
+      const res = await fetch("https://api.html2pdf.app/v1/generate", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ html, apikey: "demo" }),
+      });
+      if (!res.ok) throw new Error("PDF service error");
+      const pdfBuf = Buffer.from(await res.arrayBuffer());
+      await sock.sendMessage(from, {
+        document: pdfBuf,
+        mimetype: "application/pdf",
+        fileName: "maxx-xmd-document.pdf",
+        caption: "📄 *PDF Generated!*\n\n> _MAXX XMD_ ⚡",
+      });
+    } catch {
+      // Fallback to plain text file
+      const textBuf = Buffer.from(text, "utf8");
+      await sock.sendMessage(from, {
+        document: textBuf,
+        mimetype: "text/plain",
+        fileName: "document.txt",
+        caption: "📄 *Text Document*\n_(PDF service unavailable — sent as .txt)_\n\n> _MAXX XMD_ ⚡",
+      });
+    }
+  },
+});
+
+// ---- VIDEO TOOLS ----
+registerCommand({
+  name: "tovideo",
+  aliases: ["audiotovideo"],
+  category: "Audio",
+  description: "Convert audio to video with black background",
+  handler: async ({ sock, from, msg, reply }) => {
+    const ctx = msg.message?.extendedTextMessage?.contextInfo;
+    const audioMsg = msg.message?.audioMessage || ctx?.quotedMessage?.audioMessage;
+    if (!audioMsg) return reply("❌ Reply to an audio message with .tovideo");
+    await reply("⏳ Converting audio to video...");
+    try {
+      const buf = await downloadMediaMessage({ message: { audioMessage: audioMsg } } as WAMessage, "buffer", {});
+      const os = await import("os");
+      const tmpAudio = path.join(os.tmpdir(), `maxx_tov_audio_${Date.now()}.mp3`);
+      const tmpVideo = path.join(os.tmpdir(), `maxx_tov_vid_${Date.now()}.mp4`);
+      fs.writeFileSync(tmpAudio, buf as Buffer);
+      const { exec } = await import("child_process");
+      const { promisify } = await import("util");
+      const execAsync = promisify(exec);
+      await execAsync(`ffmpeg -f lavfi -i color=c=black:size=640x640:rate=1 -i "${tmpAudio}" -shortest -c:v libx264 -tune stillimage -c:a aac -b:a 192k "${tmpVideo}" -y`);
+      const video = fs.readFileSync(tmpVideo);
+      await sock.sendMessage(from, { video, caption: "🎬 *Audio → Video Converted!*\n\n> _MAXX XMD_ ⚡" } as any);
+      fs.unlinkSync(tmpAudio);
+      fs.unlinkSync(tmpVideo);
+    } catch (e: any) {
+      await reply(`❌ Conversion failed: ${e.message}`);
+    }
+  },
+});
+
+registerCommand({
+  name: "volvideo",
+  aliases: ["videovol"],
+  category: "Audio",
+  description: "Adjust the volume of a video",
+  handler: async ({ sock, from, msg, args, reply }) => {
+    const ctx = msg.message?.extendedTextMessage?.contextInfo;
+    const vidMsg = msg.message?.videoMessage || ctx?.quotedMessage?.videoMessage;
+    if (!vidMsg) return reply("❌ Reply to a video with .volvideo <multiplier>\nExample: .volvideo 2.0\nValues: 0.5 (half) 2.0 (double)");
+    const vol = Math.min(Math.max(parseFloat(args[0]) || 2, 0.1), 10);
+    await reply(`⏳ Adjusting volume to ${vol}x...`);
+    try {
+      const buf = await downloadMediaMessage({ message: { videoMessage: vidMsg } } as WAMessage, "buffer", {});
+      const os = await import("os");
+      const tmpIn = path.join(os.tmpdir(), `maxx_vvIn_${Date.now()}.mp4`);
+      const tmpOut = path.join(os.tmpdir(), `maxx_vvOut_${Date.now()}.mp4`);
+      fs.writeFileSync(tmpIn, buf as Buffer);
+      const { exec } = await import("child_process");
+      const { promisify } = await import("util");
+      const execAsync = promisify(exec);
+      await execAsync(`ffmpeg -i "${tmpIn}" -af "volume=${vol}" -c:v copy "${tmpOut}" -y`);
+      const video = fs.readFileSync(tmpOut);
+      await sock.sendMessage(from, { video, caption: `🔊 *Video Volume: ${vol}x*\n\n> _MAXX XMD_ ⚡` } as any);
+      fs.unlinkSync(tmpIn);
+      fs.unlinkSync(tmpOut);
+    } catch (e: any) {
+      await reply(`❌ Failed: ${e.message}`);
+    }
+  },
+});
+
 // ── SUDO helpers ──────────────────────────────────────────────────────────────
 const SUDO_FILE = path.join(process.cwd(), "../../sudo.json");
 function loadSudo(): string[] {
