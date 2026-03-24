@@ -1,0 +1,132 @@
+@import url('https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700&family=Share+Tech+Mono&display=swap');
+@import "tailwindcss";
+@import "tw-animate-css";
+@plugin "@tailwindcss/typography";
+
+@custom-variant dark (&:is(.dark *));
+
+@theme inline {
+  --font-sans: 'Outfit', sans-serif;
+  --font-mono: 'Share Tech Mono', monospace;
+  --font-display: 'Share Tech Mono', monospace;
+
+  /* Cyberpunk Dark Theme Palette */
+  --color-background: hsl(240 10% 4%);
+  --color-foreground: hsl(142 70% 90%);
+  
+  --color-card: hsl(240 10% 6%);
+  --color-card-foreground: hsl(142 70% 90%);
+  
+  --color-popover: hsl(240 10% 6%);
+  --color-popover-foreground: hsl(142 70% 90%);
+  
+  --color-primary: hsl(152 76% 36%); /* Neon Green */
+  --color-primary-foreground: hsl(240 10% 4%);
+  
+  --color-secondary: hsl(240 10% 12%);
+  --color-secondary-foreground: hsl(142 70% 90%);
+  
+  --color-muted: hsl(240 10% 12%);
+  --color-muted-foreground: hsl(142 20% 60%);
+  
+  --color-accent: hsl(152 76% 36% / 0.2);
+  --color-accent-foreground: hsl(152 76% 36%);
+  
+  --color-destructive: hsl(0 84% 60%);
+  --color-destructive-foreground: hsl(0 0% 100%);
+  
+  --color-border: hsl(152 76% 36% / 0.2);
+  --color-input: hsl(240 10% 12%);
+  --color-ring: hsl(152 76% 36%);
+
+  --radius-sm: 0.25rem;
+  --radius-md: 0.5rem;
+  --radius-lg: 0.75rem;
+  --radius-xl: 1rem;
+}
+
+:root {
+  --background: 240 10% 4%;
+  --foreground: 142 70% 90%;
+  --card: 240 10% 6%;
+  --card-foreground: 142 70% 90%;
+  --popover: 240 10% 6%;
+  --popover-foreground: 142 70% 90%;
+  --primary: 152 76% 36%;
+  --primary-foreground: 240 10% 4%;
+  --secondary: 240 10% 12%;
+  --secondary-foreground: 142 70% 90%;
+  --muted: 240 10% 12%;
+  --muted-foreground: 142 20% 60%;
+  --accent: 152 76% 36%;
+  --accent-foreground: 142 70% 90%;
+  --destructive: 0 84% 60%;
+  --destructive-foreground: 0 0% 100%;
+  --border: 152 76% 36% / 0.2;
+  --input: 240 10% 12%;
+  --ring: 152 76% 36%;
+  --radius: 0.5rem;
+}
+
+@layer base {
+  * {
+    @apply border-border;
+  }
+  body {
+    @apply bg-background text-foreground font-sans antialiased min-h-screen selection:bg-primary/30 selection:text-primary-foreground;
+    background-image: 
+      radial-gradient(circle at 50% 0%, hsl(152 76% 36% / 0.05) 0%, transparent 50%),
+      linear-gradient(to right, hsl(152 76% 36% / 0.03) 1px, transparent 1px),
+      linear-gradient(to bottom, hsl(152 76% 36% / 0.03) 1px, transparent 1px);
+    background-size: 100% 100%, 40px 40px, 40px 40px;
+    background-attachment: fixed;
+  }
+  
+  h1, h2, h3, h4, h5, h6 {
+    @apply font-mono tracking-tight text-primary;
+    text-shadow: 0 0 20px hsl(var(--primary) / 0.3);
+  }
+}
+
+@layer utilities {
+  .glass-panel {
+    @apply bg-card/80 backdrop-blur-md border border-primary/20 shadow-[0_0_30px_rgba(0,0,0,0.5)];
+  }
+  
+  .glow-text {
+    text-shadow: 0 0 10px hsl(var(--primary) / 0.5);
+  }
+  
+  .glow-border {
+    box-shadow: 0 0 15px hsl(var(--primary) / 0.2), inset 0 0 15px hsl(var(--primary) / 0.1);
+  }
+
+  .cyber-button {
+    @apply relative overflow-hidden transition-all duration-300;
+  }
+  
+  .cyber-button::before {
+    content: '';
+    @apply absolute inset-0 bg-gradient-to-r from-transparent via-white/10 to-transparent -translate-x-[150%] transition-transform duration-500 ease-out;
+  }
+  
+  .cyber-button:hover::before {
+    @apply translate-x-[150%];
+  }
+}
+
+/* Custom Scrollbar for Cyberpunk vibe */
+::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+::-webkit-scrollbar-track {
+  background: hsl(var(--background));
+}
+::-webkit-scrollbar-thumb {
+  background: hsl(var(--primary) / 0.3);
+  border-radius: 4px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: hsl(var(--primary) / 0.5);
+}
