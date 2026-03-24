@@ -294,27 +294,133 @@ registerCommand({
 // ---- DOWNLOAD ----
 registerCommand({
   name: "song",
-  aliases: ["play", "music", "yt", "ytaudio"],
+  aliases: ["play", "music", "yt", "ytaudio", "spotify"],
   category: "Download",
-  description: "Download a YouTube song/audio",
+  description: "Download a song (Spotify/YouTube/search)",
   handler: async ({ sock, from, args, reply }) => {
     const query = args.join(" ");
-    if (!query) return reply("❓ Usage: .song <song title or YouTube URL>\nExamples:\n• .song Blinding Lights\n• .play Alikiba UTU\n• .song https://youtu.be/...");
-    await reply(`🔍 Searching *${query}*... Please wait ⏳`);
+    if (!query) return reply(
+      `❓ *Usage:* .song <title or URL>\n\n` +
+      `*Examples:*\n` +
+      `• .song Blinding Lights\n` +
+      `• .song Alikiba UTU\n` +
+      `• .song https://youtu.be/...\n` +
+      `• .song https://open.spotify.com/track/...`
+    );
+
+    await reply(`╔═══════════════════╗\n║ 🎵 *MAXX MUSIC* 🎵\n╚═══════════════════╝\n\n🔍 Searching *${query}*...\n⏳ Please wait...`);
+
     try {
-      const { downloadAudio } = await import("./ytdlpUtil.js");
-      const { buffer, title, duration } = await downloadAudio(query);
-      const mins = Math.floor(duration / 60);
-      const secs = (duration % 60).toString().padStart(2, "0");
+      let downloadUrl = "";
+      let title = "Unknown";
+      let artist = "";
+      let duration = "";
+      let thumbnail = "";
+
+      // ── Spotify URL ──────────────────────────────
+      if (query.includes("open.spotify.com")) {
+        const res = await fetch(`https://eliteprotech-apis.zone.id/spotify?url=${encodeURIComponent(query)}`);
+        const data = await res.json() as any;
+        if (!data.success || !data.data?.download) throw new Error("Spotify track not found or unavailable");
+        downloadUrl = data.data.download;
+        title    = data.data.metadata?.title  || "Unknown";
+        artist   = data.data.metadata?.artist || "";
+        duration = data.data.metadata?.duration || "";
+        thumbnail = data.data.metadata?.images || "";
+
+      // ── YouTube URL or plain text search ─────────
+      } else {
+        let ytUrl = query;
+
+        // Plain text → search with yt-dlp to get video ID
+        if (!query.match(/youtube\.com|youtu\.be/i)) {
+          const { execFile } = await import("child_process");
+          const { promisify } = await import("util");
+          const { getYtdlpBin } = await import("./ytdlpUtil.js");
+          const ytdlp = await getYtdlpBin();
+          const execFileAsync = promisify(execFile);
+          const { stdout } = await execFileAsync(ytdlp, [
+            `ytsearch1:${query}`, "--get-id", "--no-warnings", "--no-playlist"
+          ], { timeout: 20000 });
+          const videoId = stdout.trim().split("\n")[0];
+          if (!videoId) throw new Error("No results found for that search");
+          ytUrl = `https://youtube.com/watch?v=${videoId}`;
+        }
+
+        const res = await fetch(`https://eliteprotech-apis.zone.id/yt?url=${encodeURIComponent(ytUrl)}`);
+        const data = await res.json() as any;
+        if (!data.status || !data.downloadUrl) throw new Error("Could not get download link from YouTube");
+        downloadUrl = data.downloadUrl;
+        title     = data.title   || "Unknown";
+        artist    = data.channel || "";
+        thumbnail = data.thumbnail || "";
+        const secs = data.duration || 0;
+        duration = `${Math.floor(secs / 60)}:${(secs % 60).toString().padStart(2, "0")}`;
+      }
+
+      // ── Fetch & send ──────────────────────────────
+      const audioRes = await fetch(downloadUrl);
+      if (!audioRes.ok) throw new Error(`Download server returned ${audioRes.status}`);
+      const buffer = Buffer.from(await audioRes.arrayBuffer());
+
+      if (thumbnail) {
+        await sock.sendMessage(from, {
+          image: { url: thumbnail },
+          caption: `🎵 *${title}*${artist ? `\n👤 ${artist}` : ""}${duration ? `\n⏱️ ${duration}` : ""}`,
+        });
+      }
+
       await sock.sendMessage(from, {
         audio: buffer,
         mimetype: "audio/mpeg",
         fileName: `${title}.mp3`,
         ptt: false,
-      } as any, { quoted: from as any });
-      await reply(`🎵 *${title}*\n⏱️ ${mins}:${secs}`);
+      } as any);
+
     } catch (e: any) {
-      await reply(`❌ Download failed: ${e.message}`);
+      await reply(`❌ *Download Failed*\n\n${e.message || "Unknown error"}\n\nTry with a direct YouTube or Spotify link.`);
+    }
+  },
+});
+
+registerCommand({
+  name: "spotifydl",
+  aliases: ["spdl"],
+  category: "Download",
+  description: "Download a Spotify track",
+  handler: async ({ sock, from, args, reply }) => {
+    const url = args[0];
+    if (!url?.includes("open.spotify.com")) {
+      return reply(`❓ *Usage:* .spotifydl <Spotify URL>\n\n*Example:*\n.spotifydl https://open.spotify.com/track/...`);
+    }
+    await reply(`╔═══════════════════╗\n║ 🎧 *SPOTIFY DL* 🎧\n╚═══════════════════╝\n\n⏳ Fetching track...`);
+    try {
+      const res = await fetch(`https://eliteprotech-apis.zone.id/spotify?url=${encodeURIComponent(url)}`);
+      const data = await res.json() as any;
+      if (!data.success || !data.data?.download) throw new Error("Track not found or unavailable");
+
+      const { title, artist, duration, images } = data.data.metadata;
+
+      if (images) {
+        await sock.sendMessage(from, {
+          image: { url: images },
+          caption: `🎧 *${title}*\n👤 ${artist}\n⏱️ ${duration}`,
+        });
+      }
+
+      const audioRes = await fetch(data.data.download);
+      if (!audioRes.ok) throw new Error("Download CDN unavailable");
+      const buffer = Buffer.from(await audioRes.arrayBuffer());
+
+      await sock.sendMessage(from, {
+        audio: buffer,
+        mimetype: "audio/mpeg",
+        fileName: `${title} - ${artist}.mp3`,
+        ptt: false,
+      } as any);
+
+    } catch (e: any) {
+      await reply(`❌ *Spotify DL Failed*\n\n${e.message}`);
     }
   },
 });
@@ -551,28 +657,37 @@ registerCommand({
   },
 });
 
+// ── Copilot helper — powers all AI commands ──────────────────────────────────
+async function askCopilot(question: string): Promise<{ answer: string; citations: string }> {
+  const res = await fetch(`https://eliteprotech-apis.zone.id/copilot?q=${encodeURIComponent(question)}`);
+  if (!res.ok) throw new Error(`API error ${res.status}`);
+  const data = await res.json() as any;
+  if (!data.success || !data.text) throw new Error("Empty response");
+  let citations = "";
+  if (data.citations?.length > 0) {
+    citations = "\n\n📚 *Sources:*\n" + (data.citations as any[]).slice(0, 3)
+      .map((c: any, i: number) => `${i + 1}. ${c.title}`).join("\n");
+  }
+  return { answer: data.text.trim(), citations };
+}
+
 // ---- AI ----
 registerCommand({
   name: "gpt",
-  aliases: ["ai", "ask", "chatgpt"],
+  aliases: ["ai", "ask", "chatgpt", "copilot"],
   category: "AI",
-  description: "Chat with AI",
+  description: "Chat with MAXX AI (powered by Copilot)",
   handler: async ({ args, reply }) => {
     const q = args.join(" ");
-    if (!q) return reply("❓ Usage: .gpt <question>\nExample: .gpt What is the capital of France?");
-    await reply("🤖 *MAXX XMD AI*\n\n⏳ Thinking...");
+    if (!q) return reply(
+      `╔══════════════════════╗\n║ 🤖 *MAXX AI* 🤖\n╚══════════════════════╝\n\n❓ *Usage:* .ai <question>\n\n*Examples:*\n• .ai What is Nigeria's GDP?\n• .ask Write a love poem\n• .gpt Explain quantum physics`
+    );
+    await reply(`╔══════════════════════╗\n║ 🤖 *MAXX AI* 🤖\n╚══════════════════════╝\n\n⏳ Thinking...`);
     try {
-      const res = await fetch("https://api.openai.com/v1/chat/completions", {
-        method: "POST",
-        headers: { "Content-Type": "application/json", Authorization: `Bearer ${process.env.OPENAI_API_KEY}` },
-        body: JSON.stringify({ model: "gpt-3.5-turbo", messages: [{ role: "user", content: q }], max_tokens: 500 }),
-      });
-      const data = await res.json() as any;
-      const answer = data.choices?.[0]?.message?.content;
-      if (!answer) throw new Error();
-      await reply(`🤖 *MAXX XMD AI*\n\n❓ ${q}\n\n💬 ${answer}`);
-    } catch {
-      await reply(`🤖 *MAXX XMD AI*\n\nI need an OPENAI_API_KEY to answer AI questions.\n\nSet: OPENAI_API_KEY in your environment variables.\n\nAlternatively try: .gemini ${q}`);
+      const { answer, citations } = await askCopilot(q);
+      await reply(`╔══════════════════════╗\n║ 🤖 *MAXX AI* 🤖\n╚══════════════════════╝\n\n❓ *${q}*\n\n${answer}${citations}`);
+    } catch (e: any) {
+      await reply(`❌ AI Error: ${e.message || "Try again later"}`);
     }
   },
 });
@@ -581,38 +696,31 @@ registerCommand({
   name: "gemini",
   aliases: ["google"],
   category: "AI",
-  description: "Chat with Google Gemini AI",
+  description: "Chat with Gemini AI",
   handler: async ({ args, reply }) => {
     const q = args.join(" ");
     if (!q) return reply("❓ Usage: .gemini <question>");
-    await reply("🤖 Asking Gemini...");
+    await reply(`🤖 *Gemini AI*\n\n⏳ Thinking...`);
     try {
-      const apiKey = process.env.GEMINI_API_KEY;
-      if (!apiKey) throw new Error("No API key");
-      const res = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-pro:generateContent?key=${apiKey}`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ contents: [{ parts: [{ text: q }] }] }),
-      });
-      const data = await res.json() as any;
-      const text = data.candidates?.[0]?.content?.parts?.[0]?.text;
-      if (!text) throw new Error();
-      await reply(`✨ *Gemini AI*\n\n❓ ${q}\n\n💬 ${text}`);
-    } catch {
-      await reply(`✨ *Gemini AI*\n\nSet GEMINI_API_KEY in your environment to enable Gemini.\n\nGet a free key at: https://aistudio.google.com/`);
+      const { answer, citations } = await askCopilot(q);
+      await reply(`✨ *Gemini AI*\n\n❓ *${q}*\n\n${answer}${citations}`);
+    } catch (e: any) {
+      await reply(`❌ AI Error: ${e.message || "Try again later"}`);
     }
   },
 });
 
 const aiCommands = [
-  { name: "analyze", prompt: (q: string) => `Analyze this: ${q}` },
-  { name: "code", prompt: (q: string) => `Write code for: ${q}` },
-  { name: "recipe", prompt: (q: string) => `Give me a recipe for: ${q}` },
-  { name: "story", prompt: (q: string) => `Write a short story about: ${q}` },
-  { name: "summarize", prompt: (q: string) => `Summarize this: ${q}` },
-  { name: "teach", prompt: (q: string) => `Teach me about: ${q}` },
-  { name: "programming", prompt: (q: string) => `Answer this programming question: ${q}` },
-  { name: "generate", prompt: (q: string) => `Generate content about: ${q}` },
+  { name: "analyze",    prompt: (q: string) => `Analyze this in detail: ${q}` },
+  { name: "code",       prompt: (q: string) => `Write clean code for: ${q}` },
+  { name: "recipe",     prompt: (q: string) => `Give me a detailed recipe for: ${q}` },
+  { name: "story",      prompt: (q: string) => `Write a creative short story about: ${q}` },
+  { name: "summarize",  prompt: (q: string) => `Summarize this clearly and concisely: ${q}` },
+  { name: "teach",      prompt: (q: string) => `Teach me about this topic in simple terms: ${q}` },
+  { name: "programming",prompt: (q: string) => `Answer this programming question with examples: ${q}` },
+  { name: "generate",   prompt: (q: string) => `Generate creative content about: ${q}` },
+  { name: "explain",    prompt: (q: string) => `Explain this simply: ${q}` },
+  { name: "translate",  prompt: (q: string) => `Translate this text and also state the language pair: ${q}` },
 ];
 
 for (const cmd of aiCommands) {
@@ -624,22 +732,12 @@ for (const cmd of aiCommands) {
     handler: async ({ args, reply }) => {
       const q = args.join(" ");
       if (!q) return reply(`❓ Usage: .${cmd.name} <input>`);
-      await reply(`🤖 Processing your request...`);
+      await reply(`🤖 Processing...`);
       try {
-        const prompt = cmd.prompt(q);
-        const apiKey = process.env.GEMINI_API_KEY;
-        if (!apiKey) throw new Error();
-        const res = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-pro:generateContent?key=${apiKey}`, {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ contents: [{ parts: [{ text: prompt }] }] }),
-        });
-        const data = await res.json() as any;
-        const text = data.candidates?.[0]?.content?.parts?.[0]?.text;
-        if (!text) throw new Error();
-        await reply(`🤖 *${cmd.name.toUpperCase()}*\n\n${text}`);
-      } catch {
-        await reply(`🤖 *${cmd.name.toUpperCase()}*\n\nSet GEMINI_API_KEY to enable AI commands.\nGet free key: https://aistudio.google.com/`);
+        const { answer, citations } = await askCopilot(cmd.prompt(q));
+        await reply(`🤖 *${cmd.name.toUpperCase()}*\n\n${answer}${citations}`);
+      } catch (e: any) {
+        await reply(`❌ AI Error: ${e.message || "Try again later"}`);
       }
     },
   });
