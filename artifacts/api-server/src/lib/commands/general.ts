@@ -256,6 +256,7 @@ registerCommand({
       "General", "Download", "AI", "Search", "Photo", "Fun", "Games",
       "Anime", "Pokemon", "Group", "Converter", "Finance", "Health", "Math",
       "Education", "Settings", "Tools", "Religion", "Sports", "Owner",
+      "Sticker", "Protection", "Economy",
     ];
     const CAT_EMOJI: Record<string, string> = {
       General: "🌐", Download: "⬇️", AI: "🤖", Search: "🔍",
@@ -263,6 +264,7 @@ registerCommand({
       Group: "👥", Converter: "🔄", Finance: "💰", Health: "❤️",
       Math: "🔢", Education: "📚",
       Settings: "⚙️", Tools: "🔧", Religion: "🕌", Sports: "⚽", Owner: "👑",
+      Sticker: "🎭", Protection: "🛡️", Economy: "🪙",
     };
 
     // ── Get all unique commands from registry (exclude alias duplicates) ───
