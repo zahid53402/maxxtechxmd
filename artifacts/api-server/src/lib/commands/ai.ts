@@ -25,7 +25,7 @@ function pollinationsImgUrl(prompt: string, model = "flux", w = 1024, h = 1024):
 // ── Image gen commands ────────────────────────────────────────────────────────
 registerCommand({
   name: "aiphoto",
-  aliases: ["imagine", "generate", "genimage"],
+  aliases: ["genimage", "aiimage"],
   category: "AI",
   description: "Generate an AI image from your text description",
   usage: ".aiphoto <description>",
@@ -553,7 +553,7 @@ registerCommand({
 
 registerCommand({
   name: "clearai",
-  aliases: ["clearchat", "resetai"],
+  aliases: ["resetai", "clearaichat"],
   category: "AI",
   description: "Clear your AI chat history",
   usage: ".clearai",
