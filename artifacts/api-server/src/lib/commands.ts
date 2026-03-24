@@ -1,7 +1,7 @@
 import type { WASocket, WAMessage, proto } from "@whiskeysockets/baileys";
 import { downloadMediaMessage } from "@whiskeysockets/baileys";
 import sharp from "sharp";
-import { loadSettings, saveSettings } from "./botState.js";
+import { loadSettings, saveSettings, WORKSPACE_ROOT } from "./botState.js";
 import { logger } from "./logger.js";
 import fs from "fs";
 import path from "path";
@@ -1021,7 +1021,7 @@ registerCommand({
 });
 
 // ── SUDO helpers ──────────────────────────────────────────────────────────────
-const SUDO_FILE = path.join(process.cwd(), "../../sudo.json");
+const SUDO_FILE = path.join(WORKSPACE_ROOT, "sudo.json");
 function loadSudo(): string[] {
   try { if (fs.existsSync(SUDO_FILE)) return JSON.parse(fs.readFileSync(SUDO_FILE, "utf8")); } catch {}
   return [];
@@ -1045,13 +1045,24 @@ function extractText(msg: WAMessage): string {
 
 // ── Main message handler ──────────────────────────────────────────────────────
 export async function handleMessage(sock: WASocket, msg: WAMessage) {
-  if (!msg.message || msg.key.fromMe) return;
+  if (!msg.message) return;
 
   const from = msg.key.remoteJid!;
   const sender = msg.key.participant || from;
   const isGroup = from.endsWith("@g.us");
   const body = extractText(msg);
   const settings = loadSettings();
+
+  // fromMe=true means this number sent it (could be the owner's phone on same-number setup).
+  // Only skip self-messages that don't look like commands (bot's own replies), or are in a
+  // DM (self-chat). This way owners using the same number as the bot can still send commands
+  // in groups without the bot ignoring them.
+  if (msg.key.fromMe) {
+    const _prefix = settings.prefix || ".";
+    if (!body.startsWith(_prefix)) return; // bot's own non-command replies — skip to prevent loops
+    if (!isGroup) return;                  // self-commands in DMs/self-chat — skip
+    // self-commands in a group = owner using same number as bot — allow and process
+  }
   const prefix = settings.prefix || ".";
 
   // Auto-read
