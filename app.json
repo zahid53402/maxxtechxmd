@@ -67,14 +67,6 @@
       "description": "Auto-view WhatsApp status updates (true/false)",
       "value": "true",
       "required": false
-    },
-    "OPENAI_API_KEY": {
-      "description": "OpenAI API key for .gpt command (optional)",
-      "required": false
-    },
-    "GEMINI_API_KEY": {
-      "description": "Google Gemini API key for AI commands (optional, free at aistudio.google.com)",
-      "required": false
     }
   },
   "formation": {
