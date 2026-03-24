@@ -53,6 +53,7 @@ import "./commands/games2.js";
 import "./commands/media2.js";
 import "./commands/country.js";
 import "./commands/creative2.js";
+import "./commands/lifestyle.js";
 
 // ── Tools / download / audio / AI — inline here ──────────────────────────────
 import { registerCommand } from "./commands/types.js";
