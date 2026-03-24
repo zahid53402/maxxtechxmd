@@ -136,7 +136,7 @@ registerCommand({
 // ── toviewonce — convert any media to view-once ───────────────────────────────
 registerCommand({
   name: "toviewonce",
-  aliases: ["makeviewonce", "vo", "viewonce"],
+  aliases: ["makeviewonce", "tovo", "mvo"],
   category: "Converter",
   description: "Convert any media to a view-once message — reply to image/video",
   usage: ".toviewonce (reply to image or video)",
