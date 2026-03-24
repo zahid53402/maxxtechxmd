@@ -1,6 +1,7 @@
 import { execFile } from "child_process";
 import { promisify } from "util";
 import fs from "fs";
+import os from "os";
 import path from "path";
 import https from "https";
 
@@ -73,9 +74,11 @@ export async function getYtdlpBin(): Promise<string> {
     }
   } catch {}
 
-  const dest = YTDLP_CANDIDATE_PATHS[1];
+  const dest = process.env.HOME
+    ? path.join(process.env.HOME, "yt-dlp-bin")
+    : path.join(os.tmpdir(), "yt-dlp-bin");
   try {
-    console.log("[ytdlp] Downloading yt-dlp binary...");
+    console.log("[ytdlp] Downloading yt-dlp binary to", dest, "...");
     await downloadBinary(dest);
     await execFileAsync(dest, ["--version"], { timeout: 5000 });
     cachedBin = dest;
