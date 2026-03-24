@@ -253,18 +253,20 @@ registerCommand({
 
     // ── Category config ────────────────────────────────────────────────────
     const CAT_ORDER = [
-      "General", "Download", "AI", "Search", "Photo", "Fun", "Games",
+      "General", "AI", "Download", "Search", "Photo", "Fun", "Games",
       "Anime", "Pokemon", "Group", "Converter", "Finance", "Health", "Math",
       "Education", "Settings", "Tools", "Audio", "Religion", "Sports", "Owner",
-      "Sticker", "Protection", "Economy", "Lifestyle",
+      "Sticker", "Protection", "Economy", "Lifestyle", "Coding", "Reactions",
+      "Stalker", "Channel", "Uploader",
     ];
     const CAT_EMOJI: Record<string, string> = {
-      General: "🌐", Download: "⬇️", AI: "🤖", Search: "🔍",
+      General: "🌐", AI: "🤖", Download: "⬇️", Search: "🔍",
       Photo: "📸", Fun: "😂", Games: "🎮", Anime: "🎌", Pokemon: "🔴",
       Group: "👥", Converter: "🔄", Finance: "💰", Health: "❤️",
       Math: "🔢", Education: "📚",
       Settings: "⚙️", Tools: "🔧", Audio: "🎵", Religion: "🕌", Sports: "⚽", Owner: "👑",
       Sticker: "🎭", Protection: "🛡️", Economy: "🪙", Lifestyle: "🌿",
+      Coding: "💻", Reactions: "💝", Stalker: "🕵️", Channel: "📢", Uploader: "📤",
     };
 
     // ── Get all unique commands from registry (exclude alias duplicates) ───
@@ -337,7 +339,18 @@ registerCommand({
         `📢 *Channel:* https://whatsapp.com/channel/0029Vb6XNTjAInPblhlwnm2J\n\n` +
         `> _Powered by ${botName}_ ⚡`;
 
-      const botpic: string = (settings as any).botpic || "https://i.postimg.cc/YSXgK0Wb/Whats-App-Image-2025-11-22-at-08-20-26.jpg";
+      const MENU_IMAGES = [
+        "https://files.catbox.moe/jlz9dq.png",
+        "https://files.catbox.moe/gsbjqz.jpg",
+        "https://files.catbox.moe/llsa6p.jpg",
+        "https://files.catbox.moe/u0jt81.jpg",
+        "https://files.catbox.moe/l478xo.jpg",
+        "https://files.catbox.moe/kzl01l.jpg",
+        "https://files.catbox.moe/6qdiwk.jpg",
+        "https://i.postimg.cc/YSXgK0Wb/Whats-App-Image-2025-11-22-at-08-20-26.jpg",
+      ];
+      const botpic: string = (settings as any).botpic ||
+        MENU_IMAGES[Math.floor(Math.random() * MENU_IMAGES.length)];
       try {
         await sock.sendMessage(from, { image: { url: botpic }, caption: text }, { quoted: msg });
       } catch {
