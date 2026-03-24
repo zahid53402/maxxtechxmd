@@ -197,41 +197,10 @@ registerCommand({
 });
 
 registerCommand({
-  name: "imdb",
-  aliases: ["movie", "film"],
+  name: "movie",
+  aliases: ["film", "movies", "yts", "yify", "imdb"],
   category: "Search",
-  description: "Search IMDB for a movie",
-  handler: async ({ args, reply }) => {
-    const query = args.join(" ");
-    if (!query) return reply("❓ Usage: .imdb <movie name>\nExample: .imdb Avengers");
-    try {
-      const apiKey = process.env.OMDB_API_KEY || "trilogy";
-      const res = await fetch(`https://www.omdbapi.com/?apikey=${apiKey}&t=${encodeURIComponent(query)}&type=movie`);
-      const d = await res.json() as any;
-      if (d.Response === "False" || !d.Title) throw new Error(d.Error);
-      await reply(`🎬 *${d.Title}* (${d.Year})
-
-📅 Released: ${d.Released}
-⭐ IMDB: ${d.imdbRating}/10
-🎭 Genre: ${d.Genre}
-🎬 Director: ${d.Director}
-🌟 Cast: ${d.Actors}
-⏱️ Runtime: ${d.Runtime}
-🌐 Country: ${d.Country}
-🏆 Awards: ${d.Awards}
-
-📝 *Plot:*\n${d.Plot}`);
-    } catch (e: any) {
-      await reply(`❌ Movie not found: *${query}*\n\nTip: Try the exact movie title.`);
-    }
-  },
-});
-
-registerCommand({
-  name: "yts",
-  aliases: ["yify", "movies", "movie", "film"],
-  category: "Search",
-  description: "Search movies with poster and download option",
+  description: "Search movies with poster, details and download links",
   handler: async ({ sock, from, msg: waMsg, args, reply, settings }) => {
     const p = settings.prefix;
     const sub = args[0]?.toLowerCase();
@@ -239,134 +208,143 @@ registerCommand({
 
     if (!args.length) {
       return reply(
-        `🎬 *MOVIE BOX* 🍿\n\n*Commands:*\n${p}movie <name> — Search any movie\n${p}movie dl <name> — Get movie download links\n\n📝 *Examples:*\n${p}movie Avengers\n${p}movie Black Panther\n${p}movie dl Spiderman`
+        `╔══════════════════════╗\n║   🎬 *MOVIE BOX* 🍿   ║\n╚══════════════════════╝\n\n` +
+        `*Commands:*\n${p}movie <name> — Search any movie\n${p}movie dl <name> — Get download links\n\n` +
+        `📝 *Examples:*\n${p}movie Avengers\n${p}movie Black Panther\n${p}movie dl Spider-Man`
       );
     }
 
-    // ── .movie dl <name> — YTS download links ────────────────────────────────
+    const OMDB_KEY = process.env.OMDB_API_KEY || "trilogy";
+
+    // ── helper: fetch poster buffer ───────────────────────────────────────────
+    async function fetchPoster(url: string): Promise<Buffer | null> {
+      try {
+        const r = await fetch(url, { signal: AbortSignal.timeout(8000) });
+        if (!r.ok) return null;
+        const buf = Buffer.from(await r.arrayBuffer());
+        return buf.byteLength > 1000 ? buf : null;
+      } catch { return null; }
+    }
+
+    // ── .movie dl <name> — download links from multiple sites ────────────────
     if (sub === "dl" || sub === "download") {
       const title = rest;
       if (!title) return reply(`❌ Please provide a movie name.\n\n📝 Example: ${p}movie dl Avengers`);
 
-      await reply(`🔍 Searching *${title}* on YTS... ⏳`);
+      await reply(`🔍 Searching *${title}*... ⏳`);
 
       try {
+        // Fetch OMDB for movie details + poster
         const res = await fetch(
-          `https://yts.mx/api/v2/list_movies.json?query_term=${encodeURIComponent(title)}&limit=1`
+          `https://www.omdbapi.com/?apikey=${OMDB_KEY}&t=${encodeURIComponent(title)}&type=movie&plot=short`,
+          { signal: AbortSignal.timeout(10000) }
         );
-        const data = await res.json() as any;
-        const m = data.data?.movies?.[0];
-        if (!m) return reply(
-          `❌ No movie found for *${title}*.\n\nTry a different spelling or shorter name.`
-        );
+        const m = await res.json() as any;
 
-        const links = (m.torrents as any[])?.map((t: any) =>
-          `• *${t.quality}* [${t.type}] ${t.size}\n  🔗 ${t.url}`
-        ).join("\n\n") || "No download links found.";
+        const titleEnc = encodeURIComponent(title);
+        const titleSlug = title.replace(/\s+/g, "+");
 
         const caption =
           `╔══════════════════════╗\n║  📥 *MOVIE DOWNLOAD*  ║\n╚══════════════════════╝\n\n` +
-          `🎬 *${m.title}* (${m.year})\n` +
-          `⭐ IMDb: ${m.rating}/10  🌐 ${m.language?.toUpperCase() || "EN"}\n` +
-          `🔗 ${m.url}\n\n` +
-          `━━━━━━━━━━━━━━━━━━━━━━\n` +
-          `📥 *Download Links (YTS):*\n\n${links}\n\n` +
-          `💡 _Open links in a torrent client or browser_`;
+          `🎬 *${m.Response === "True" ? m.Title : title}*` +
+          (m.Response === "True" ? ` (${m.Year})` : "") + "\n" +
+          (m.imdbRating && m.imdbRating !== "N/A" ? `⭐ IMDb: ${m.imdbRating}/10\n` : "") +
+          (m.Genre && m.Genre !== "N/A" ? `🎭 ${m.Genre}\n` : "") +
+          (m.Runtime && m.Runtime !== "N/A" ? `⏱️ ${m.Runtime}\n` : "") +
+          `\n━━━━━━━━━━━━━━━━━━━━━━\n` +
+          `📥 *Download Links:*\n\n` +
+          `• 🎞️ *YTS (HD):* https://yts.mx/movies/${title.toLowerCase().replace(/[^a-z0-9]+/g, "-")}\n` +
+          `• 🔍 *1337x:* https://www.1337x.to/search/${titleSlug}/1/\n` +
+          `• 🏴‍☠️ *Torrentz2:* https://torrentz2.nz/search?q=${titleEnc}\n` +
+          `• 🌊 *Piratebay:* https://thepiratebay.org/search.php?q=${titleEnc}+movie\n\n` +
+          `💡 _Open links in browser or torrent client_`;
 
-        const posterUrl = m.large_cover_image || m.medium_cover_image;
-        if (posterUrl) {
-          try {
-            const buf = await fetch(posterUrl).then(r => r.ok ? r.arrayBuffer() : null);
-            if (buf && buf.byteLength > 500) {
-              await sock.sendMessage(from, { image: Buffer.from(buf), caption }, { quoted: waMsg });
-              return;
-            }
-          } catch {}
+        const posterBuf = m.Poster && m.Poster !== "N/A" ? await fetchPoster(m.Poster) : null;
+        if (posterBuf) {
+          await sock.sendMessage(from, { image: posterBuf, caption }, { quoted: waMsg });
+        } else {
+          await reply(caption);
         }
-        await reply(caption);
-      } catch {
-        await reply("❌ Could not fetch download links. Try again later.");
+      } catch (e: any) {
+        await reply(`❌ Could not fetch movie info.\n\n_${e.message?.slice(0, 100) || "Try again later"}_`);
       }
       return;
     }
 
-    // ── .movie <query> ────────────────────────────────────────────────────────
+    // ── .movie <query> — full movie search ────────────────────────────────────
     const query = args.join(" ");
-    if (!query) return reply(`❓ Usage: ${p}movie <movie name>\n\n💡 To download: ${p}movie dl <movie name>`);
 
     await reply(`🔍 Searching *${query}*... 🍿`);
 
     try {
-      const [ytsRes, omdbRes] = await Promise.allSettled([
-        fetch(`https://yts.mx/api/v2/list_movies.json?query_term=${encodeURIComponent(query)}&limit=8`).then(r => r.json()),
-        fetch(`https://www.omdbapi.com/?apikey=trilogy&s=${encodeURIComponent(query)}&type=movie`).then(r => r.json()),
+      // Search OMDB for multiple results
+      const [searchRes, singleRes] = await Promise.allSettled([
+        fetch(`https://www.omdbapi.com/?apikey=${OMDB_KEY}&s=${encodeURIComponent(query)}&type=movie`, { signal: AbortSignal.timeout(10000) }).then(r => r.json()),
+        fetch(`https://www.omdbapi.com/?apikey=${OMDB_KEY}&t=${encodeURIComponent(query)}&type=movie&plot=short`, { signal: AbortSignal.timeout(10000) }).then(r => r.json()),
       ]);
 
-      const movies: any[] = (ytsRes.status === "fulfilled" ? (ytsRes.value as any).data?.movies : null) || [];
-      if (!movies.length) {
-        return reply(`❌ No movies found for *${query}*.\n\nTry a different spelling or shorter name.`);
-      }
-      const top = movies[0];
-      const omdbList: any = omdbRes.status === "fulfilled" ? omdbRes.value : {};
-      const firstOmdb: any = omdbList.Search?.[0];
+      const searchData: any = searchRes.status === "fulfilled" ? searchRes.value : {};
+      const singleData: any = singleRes.status === "fulfilled" ? singleRes.value : {};
 
-      // Fetch full OMDB details for the top movie
-      let omdbDetail: any = {};
-      if (firstOmdb?.imdbID) {
+      // Use the best source for the top result
+      let top: any = null;
+      if (singleData.Response === "True") {
+        top = singleData;
+      } else if (searchData.Response === "True" && searchData.Search?.length) {
+        // Fetch full details of the first search result
         try {
-          const dr = await fetch(`https://www.omdbapi.com/?apikey=trilogy&i=${firstOmdb.imdbID}&plot=short`);
-          omdbDetail = await dr.json() as any;
-        } catch {}
+          const dr = await fetch(`https://www.omdbapi.com/?apikey=${OMDB_KEY}&i=${searchData.Search[0].imdbID}&plot=short`, { signal: AbortSignal.timeout(8000) });
+          top = await dr.json() as any;
+        } catch { top = searchData.Search[0]; }
       }
 
-      const director = omdbDetail?.Director && omdbDetail.Director !== "N/A" ? omdbDetail.Director : null;
-      const cast     = omdbDetail?.Actors   && omdbDetail.Actors   !== "N/A" ? omdbDetail.Actors   : null;
-      const plot     = top.summary?.replace(/<[^>]+>/g, "").trim() ||
-        (omdbDetail?.Plot && omdbDetail.Plot !== "N/A" ? omdbDetail.Plot : "No description available.");
-      const genres  = top.genres?.join(", ") || omdbDetail?.Genre   || "N/A";
-      const runtime = top.runtime ? `${top.runtime} min` : (omdbDetail?.Runtime || "N/A");
-      const rating  = top.rating || omdbDetail?.imdbRating || "N/A";
+      if (!top || top.Response === "False") {
+        return reply(`❌ No movie found for *${query}*.\n\nTry a different spelling or the exact title.`);
+      }
+
+      const director = top.Director && top.Director !== "N/A" ? top.Director : null;
+      const cast     = top.Actors   && top.Actors   !== "N/A" ? top.Actors   : null;
+      const plot     = top.Plot     && top.Plot     !== "N/A" ? top.Plot     : "No description available.";
+      const genre    = top.Genre    && top.Genre    !== "N/A" ? top.Genre    : null;
+      const runtime  = top.Runtime  && top.Runtime  !== "N/A" ? top.Runtime  : null;
+      const rating   = top.imdbRating && top.imdbRating !== "N/A" ? top.imdbRating : null;
+      const country  = top.Country  && top.Country  !== "N/A" ? top.Country  : null;
+      const awards   = top.Awards   && top.Awards   !== "N/A" && !top.Awards.startsWith("N/A") ? top.Awards : null;
 
       let caption =
         `╔══════════════════════╗\n║   🎬 *MAXX HUB* 🍿   ║\n╚══════════════════════╝\n\n` +
-        `🎬 *${top.title}* (${top.year})\n` +
-        `⭐ IMDb: ${rating}/10\n` +
-        `🎭 ${genres}\n` +
-        `⏱️ ${runtime}\n`;
+        `🎬 *${top.Title}* (${top.Year})\n`;
+      if (rating)  caption += `⭐ IMDb: ${rating}/10\n`;
+      if (genre)   caption += `🎭 ${genre}\n`;
+      if (runtime) caption += `⏱️ ${runtime}\n`;
+      if (country) caption += `🌐 ${country}\n`;
       if (director) caption += `🎬 Director: ${director}\n`;
       if (cast)     caption += `🌟 Cast: ${cast}\n`;
-      caption += `\n📝 ${plot.length > 300 ? plot.slice(0, 300) + "..." : plot}\n\n`;
-      caption += `📥 _${p}movie dl ${top.title}_\n\n`;
-      caption += `━━━━━━━━━━━━━━━━━━━━━━\n\n`;
+      if (awards)   caption += `🏆 ${awards}\n`;
+      caption += `\n📝 ${plot.length > 350 ? plot.slice(0, 350) + "..." : plot}\n\n`;
+      caption += `━━━━━━━━━━━━━━━━━━━━━━\n`;
+      caption += `📥 *${p}movie dl ${top.Title}*\n\n`;
 
-      if (movies.length > 1) {
-        caption += `📋 *More Results:*\n\n`;
-        movies.slice(1, 8).forEach((m: any, i: number) => {
-          caption += `*${i + 2}. ${m.title}* (${m.year})\n`;
-          caption += `┃ 📥 _${p}movie dl ${m.title}_\n\n`;
+      // More results from search
+      const others: any[] = searchData.Search?.filter((s: any) => s.imdbID !== top.imdbID).slice(0, 6) || [];
+      if (others.length) {
+        caption += `📋 *More Results:*\n`;
+        others.forEach((m: any, i: number) => {
+          caption += `*${i + 2}. ${m.Title}* (${m.Year})\n  📥 ${p}movie dl ${m.Title}\n`;
         });
+        caption += "\n";
       }
 
-      caption += `💡 *To download:* ${p}movie dl <movie name>`;
+      caption += `💡 _Use ${p}movie dl <name> to get download links_`;
 
-      const posterUrl =
-        top.large_cover_image ||
-        top.medium_cover_image ||
-        (firstOmdb?.Poster && firstOmdb.Poster !== "N/A" ? firstOmdb.Poster : null);
-
-      if (posterUrl) {
-        try {
-          const buf = await fetch(posterUrl).then(r => r.ok ? r.arrayBuffer() : null);
-          if (buf && buf.byteLength > 500) {
-            await sock.sendMessage(from, { image: Buffer.from(buf), caption }, { quoted: waMsg });
-            return;
-          }
-        } catch {}
+      const posterBuf = top.Poster && top.Poster !== "N/A" ? await fetchPoster(top.Poster) : null;
+      if (posterBuf) {
+        await sock.sendMessage(from, { image: posterBuf, caption }, { quoted: waMsg });
+      } else {
+        await reply(caption);
       }
-
-      await reply(caption);
-    } catch {
-      await reply("❌ Could not search movies right now. Try again later.");
+    } catch (e: any) {
+      await reply(`❌ Could not search movies. Try again later.\n\n_${e.message?.slice(0, 80) || ""}_`);
     }
   },
 });
