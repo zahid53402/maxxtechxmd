@@ -294,82 +294,56 @@ registerCommand({
 // ---- DOWNLOAD ----
 registerCommand({
   name: "song",
-  aliases: ["yt", "ytaudio", "music"],
+  aliases: ["play", "music", "yt", "ytaudio"],
   category: "Download",
   description: "Download a YouTube song/audio",
   handler: async ({ sock, from, args, reply }) => {
     const query = args.join(" ");
-    if (!query) return reply("❓ Usage: .song <YouTube URL or song title>\nExample: .song Blinding Lights");
-    await reply("⏳ Searching and downloading... Please wait.");
+    if (!query) return reply("❓ Usage: .song <song title or YouTube URL>\nExamples:\n• .song Blinding Lights\n• .play Alikiba UTU\n• .song https://youtu.be/...");
+    await reply(`🔍 Searching *${query}*... Please wait ⏳`);
     try {
-      const ytdl = await import("@distube/ytdl-core");
-      let url = query;
-      if (!url.includes("youtube.com") && !url.includes("youtu.be")) {
-        const searchRes = await fetch(`https://www.youtube.com/results?search_query=${encodeURIComponent(query)}`);
-        const html = await searchRes.text();
-        const match = html.match(/"videoId":"([a-zA-Z0-9_-]{11})"/);
-        if (!match) return reply("❌ No results found for: " + query);
-        url = `https://www.youtube.com/watch?v=${match[1]}`;
-      }
-      const info = await ytdl.default.getInfo(url);
-      const title = info.videoDetails.title;
-      const duration = info.videoDetails.lengthSeconds;
-      if (parseInt(duration) > 600) return reply("❌ Video too long (max 10 minutes).");
-      const { Readable } = await import("stream");
-      const stream = ytdl.default(url, { filter: "audioonly", quality: "highestaudio" });
-      const chunks: Buffer[] = [];
-      await new Promise<void>((res, rej) => {
-        stream.on("data", (chunk: Buffer) => chunks.push(chunk));
-        stream.on("end", res);
-        stream.on("error", rej);
-      });
-      const buf = Buffer.concat(chunks);
+      const { downloadAudio } = await import("./ytdlpUtil.js");
+      const { buffer, title, duration } = await downloadAudio(query);
+      const mins = Math.floor(duration / 60);
+      const secs = (duration % 60).toString().padStart(2, "0");
       await sock.sendMessage(from, {
-        audio: buf,
+        audio: buffer,
         mimetype: "audio/mpeg",
         fileName: `${title}.mp3`,
-      } as any);
-      await reply(`✅ *${title}*\n⏱️ Duration: ${Math.floor(parseInt(duration) / 60)}:${(parseInt(duration) % 60).toString().padStart(2, "0")}\n\n> _MAXX XMD_ ⚡`);
+        ptt: false,
+      } as any, { quoted: from as any });
+      await reply(`🎵 *${title}*\n⏱️ ${mins}:${secs}`);
     } catch (e: any) {
-      await reply(`❌ Download failed: ${e.message}\n\nTip: Try with a direct YouTube URL.`);
+      await reply(`❌ Download failed: ${e.message}`);
     }
   },
 });
 
 registerCommand({
   name: "video",
-  aliases: ["ytvideo", "ytv"],
+  aliases: ["ytvideo", "ytv", "youtube"],
   category: "Download",
   description: "Download a YouTube video",
-  handler: async ({ sock, from, args, reply }) => {
+  handler: async ({ sock, from, msg, args, reply }) => {
     const query = args.join(" ");
-    if (!query) return reply("❓ Usage: .video <YouTube URL or title>");
-    await reply("⏳ Downloading video... Please wait (may take a moment).");
+    if (!query) return reply("❓ Usage: .video <title or YouTube URL>\nExample: .video Avengers trailer\n\n_Max 5 minutes. Use .song for longer audio._");
+    await reply(`🔍 Searching *${query}*... Please wait ⏳`);
     try {
-      const ytdl = await import("@distube/ytdl-core");
-      let url = query;
-      if (!url.includes("youtube.com") && !url.includes("youtu.be")) {
-        const searchRes = await fetch(`https://www.youtube.com/results?search_query=${encodeURIComponent(query)}`);
-        const html = await searchRes.text();
-        const match = html.match(/"videoId":"([a-zA-Z0-9_-]{11})"/);
-        if (!match) return reply("❌ No results found.");
-        url = `https://www.youtube.com/watch?v=${match[1]}`;
+      const { downloadVideo } = await import("./ytdlpUtil.js");
+      const { buffer, title, duration } = await downloadVideo(query);
+      if (buffer.length > 55 * 1024 * 1024) {
+        return reply(`⚠️ File too large (${Math.round(buffer.length / 1024 / 1024)}MB). WhatsApp limit is 55MB.\n\nTry a shorter clip or use .song for audio only.`);
       }
-      const info = await ytdl.default.getInfo(url);
-      const title = info.videoDetails.title;
-      const duration = info.videoDetails.lengthSeconds;
-      if (parseInt(duration) > 300) return reply("❌ Video too long (max 5 minutes for video). Use .song for audio.");
-      const stream = ytdl.default(url, { filter: "videoandaudio", quality: "18" });
-      const chunks: Buffer[] = [];
-      await new Promise<void>((res, rej) => {
-        stream.on("data", (c: Buffer) => chunks.push(c));
-        stream.on("end", res);
-        stream.on("error", rej);
-      });
-      const buf = Buffer.concat(chunks);
-      await sock.sendMessage(from, { video: buf, caption: `🎬 *${title}*\n\n> _MAXX XMD_ ⚡`, fileName: `${title}.mp4` } as any);
+      const mins = Math.floor(duration / 60);
+      const secs = (duration % 60).toString().padStart(2, "0");
+      await sock.sendMessage(from, {
+        video: buffer,
+        caption: `🎬 *${title}*\n⏱️ ${mins}:${secs}`,
+        mimetype: "video/mp4",
+        fileName: `${title}.mp4`,
+      } as any, { quoted: msg });
     } catch (e: any) {
-      await reply(`❌ Failed: ${e.message}`);
+      await reply(`❌ Download failed: ${e.message}`);
     }
   },
 });
