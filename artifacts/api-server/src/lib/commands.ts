@@ -41,6 +41,7 @@ import "./commands/religion.js";
 import "./commands/sports.js";
 import "./commands/tools.js";
 import "./commands/photo.js";
+import "./commands/extra.js";
 
 // ── Tools / download / audio / AI — inline here ──────────────────────────────
 import { registerCommand } from "./commands/types.js";
