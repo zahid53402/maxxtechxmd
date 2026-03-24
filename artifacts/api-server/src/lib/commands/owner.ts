@@ -313,70 +313,213 @@ registerCommand({
   },
 });
 
+// ── Shared helper: download media from a quoted view-once message ─────────────
+async function downloadViewOnce(
+  msg: any,
+  sock: any,
+  from: string,
+  reply: (t: string) => Promise<void>
+): Promise<boolean> {
+  const { downloadMediaMessage } = await import("@whiskeysockets/baileys");
+  const ctx = msg.message?.extendedTextMessage?.contextInfo;
+  const quoted = ctx?.quotedMessage;
+  if (!quoted) { await reply("❌ Reply to a view-once message!"); return false; }
+
+  // Locate the view-once wrapper
+  const voMsg: any =
+    quoted.viewOnceMessage?.message ||
+    quoted.viewOnceMessageV2?.message ||
+    (quoted as any).viewOnceMessageV2Extension?.message ||
+    // Sometimes the whole quoted IS the view-once content (older Baileys)
+    quoted;
+
+  // Build a fake WAMessage keeping correct key for Baileys' download engine
+  function buildFake(msgContent: object) {
+    return {
+      key: {
+        remoteJid: from,
+        fromMe: false,
+        id: ctx?.stanzaId || "",
+        participant: ctx?.participant || undefined,
+      },
+      message: msgContent,
+    };
+  }
+
+  const imgMsg = voMsg?.imageMessage;
+  const vidMsg = voMsg?.videoMessage;
+  const audMsg = voMsg?.audioMessage;
+  const stkMsg = voMsg?.stickerMessage;
+
+  try {
+    if (imgMsg) {
+      const buf = await downloadMediaMessage(buildFake({ imageMessage: imgMsg }) as any, "buffer", {});
+      await sock.sendMessage(from, {
+        image: buf as Buffer,
+        caption: `👁️ *View Once Image*\n${imgMsg.caption || ""}\n\n> _MAXX-XMD_ ⚡`,
+      }, { quoted: msg });
+      return true;
+    } else if (vidMsg) {
+      const buf = await downloadMediaMessage(buildFake({ videoMessage: vidMsg }) as any, "buffer", {});
+      await sock.sendMessage(from, {
+        video: buf as Buffer,
+        caption: `👁️ *View Once Video*\n${vidMsg.caption || ""}\n\n> _MAXX-XMD_ ⚡`,
+      }, { quoted: msg });
+      return true;
+    } else if (audMsg) {
+      const buf = await downloadMediaMessage(buildFake({ audioMessage: audMsg }) as any, "buffer", {});
+      await sock.sendMessage(from, {
+        audio: buf as Buffer,
+        mimetype: audMsg.mimetype || "audio/mp4",
+        ptt: audMsg.ptt || false,
+      }, { quoted: msg });
+      return true;
+    } else if (stkMsg) {
+      const buf = await downloadMediaMessage(buildFake({ stickerMessage: stkMsg }) as any, "buffer", {});
+      await sock.sendMessage(from, { sticker: buf as Buffer }, { quoted: msg });
+      return true;
+    } else {
+      await reply("❌ No view-once media found in that message. Reply directly to the view-once!");
+      return false;
+    }
+  } catch (e: any) {
+    await reply(`❌ Download failed: ${e.message}\n\n💡 Make sure you reply directly to the view-once message, not a forwarded copy.`);
+    return false;
+  }
+}
+
 registerCommand({
   name: "vv",
   aliases: ["viewonce", "vo"],
   category: "Tools",
-  description: "View a view-once message (reply to it)",
+  description: "View/unlock a view-once message — reply to it then type .vv",
+  usage: ".vv (reply to view-once)",
   handler: async ({ sock, from, msg, reply }) => {
-    const quoted = msg.message?.extendedTextMessage?.contextInfo?.quotedMessage;
-    if (!quoted) return reply("❌ Reply to a view-once message with *.vv* to view it!");
-    const viewOnce =
-      quoted?.viewOnceMessage?.message ||
-      quoted?.viewOnceMessageV2?.message ||
-      (quoted as any)?.viewOnceMessageV2Extension?.message;
-    if (!viewOnce) return reply("❌ That's not a view-once message!");
-    const { downloadMediaMessage } = await import("@whiskeysockets/baileys");
-    try {
-      if (viewOnce.imageMessage) {
-        const buf = await downloadMediaMessage({ message: { imageMessage: viewOnce.imageMessage } } as any, "buffer", {});
-        await sock.sendMessage(from, {
-          image: buf as Buffer,
-          caption: `👁️ *View Once Image*\n${viewOnce.imageMessage.caption || ""}\n\n> _MAXX-XMD_ ⚡`,
-        }, { quoted: msg });
-      } else if (viewOnce.videoMessage) {
-        const buf = await downloadMediaMessage({ message: { videoMessage: viewOnce.videoMessage } } as any, "buffer", {});
-        await sock.sendMessage(from, {
-          video: buf as Buffer,
-          caption: `👁️ *View Once Video*\n${viewOnce.videoMessage.caption || ""}\n\n> _MAXX-XMD_ ⚡`,
-        }, { quoted: msg });
-      } else if (viewOnce.audioMessage) {
-        const buf = await downloadMediaMessage({ message: { audioMessage: viewOnce.audioMessage } } as any, "buffer", {});
-        await sock.sendMessage(from, { audio: buf as Buffer, mimetype: "audio/mp4" }, { quoted: msg });
-      } else {
-        await reply("❌ Unsupported view-once media type.");
-      }
-    } catch (e: any) {
-      await reply(`❌ Failed: ${e.message}`);
-    }
+    await downloadViewOnce(msg, sock, from, reply);
   },
 });
 
 registerCommand({
   name: "vv2",
-  aliases: ["antiviewonce"],
-  category: "Owner",
-  description: "Convert view-once to normal media",
+  aliases: ["unvv", "openonce"],
+  category: "Tools",
+  description: "Alternative view-once unlocker (try if .vv fails)",
+  usage: ".vv2 (reply to view-once)",
   handler: async ({ sock, from, msg, reply }) => {
+    // Try extracting directly from the quoted message's first-level structure
     const ctx = msg.message?.extendedTextMessage?.contextInfo;
-    const quoted = ctx?.quotedMessage;
-    if (!quoted) return reply("❌ Reply to a view-once message.");
-    const voMsg = quoted.viewOnceMessage?.message || quoted.viewOnceMessageV2?.message;
-    if (!voMsg) return reply("❌ That's not a view-once message.");
+    const stanzaId = ctx?.stanzaId;
+    const participant = ctx?.participant;
+    const quoted = ctx?.quotedMessage as any;
+    if (!quoted) return reply("❌ Reply to a view-once message!");
+
+    const { downloadMediaMessage } = await import("@whiskeysockets/baileys");
+
+    // Try all possible view-once wrappers
+    const wrappers = [
+      quoted.viewOnceMessage?.message,
+      quoted.viewOnceMessageV2?.message,
+      (quoted as any).viewOnceMessageV2Extension?.message,
+      quoted, // fallback: maybe quoted itself has imageMessage etc.
+    ].filter(Boolean);
+
+    for (const wrapper of wrappers) {
+      try {
+        const imgMsg = wrapper?.imageMessage;
+        const vidMsg = wrapper?.videoMessage;
+        const audMsg = wrapper?.audioMessage;
+
+        const fake = (content: object) => ({
+          key: { remoteJid: from, fromMe: false, id: stanzaId, participant },
+          message: content,
+        });
+
+        if (imgMsg) {
+          const buf = await downloadMediaMessage(fake({ imageMessage: imgMsg }) as any, "buffer", {});
+          await sock.sendMessage(from, { image: buf as Buffer, caption: `🔓 *View-once unlocked!*\n\n> _MAXX-XMD_ ⚡` }, { quoted: msg });
+          return;
+        } else if (vidMsg) {
+          const buf = await downloadMediaMessage(fake({ videoMessage: vidMsg }) as any, "buffer", {});
+          await sock.sendMessage(from, { video: buf as Buffer, caption: `🔓 *View-once unlocked!*\n\n> _MAXX-XMD_ ⚡` }, { quoted: msg });
+          return;
+        } else if (audMsg) {
+          const buf = await downloadMediaMessage(fake({ audioMessage: audMsg }) as any, "buffer", {});
+          await sock.sendMessage(from, { audio: buf as Buffer, mimetype: audMsg.mimetype || "audio/mp4" }, { quoted: msg });
+          return;
+        }
+      } catch {}
+    }
+    await reply("❌ Could not unlock that message. It may have already expired or been viewed.\n\n💡 Use *.antiviewonce on* to auto-catch them in future!");
+  },
+});
+
+// ── .save — save any quoted media as a regular unprotected message ─────────────
+registerCommand({
+  name: "save",
+  aliases: ["keep", "dl"],
+  category: "Tools",
+  description: "Save any quoted media (image/video/audio/sticker/doc) — reply to it",
+  usage: ".save (reply to any media)",
+  handler: async ({ sock, from, msg, reply }) => {
+    const { downloadMediaMessage } = await import("@whiskeysockets/baileys");
+    const ctx = msg.message?.extendedTextMessage?.contextInfo;
+    const quoted = ctx?.quotedMessage as any;
+    if (!quoted) return reply("❌ Reply to any media message with *.save*\n\nWorks with: images, videos, audio, stickers, documents, view-once");
+
+    const stanzaId = ctx?.stanzaId;
+    const participant = ctx?.participant;
+
+    function fake(content: object) {
+      return { key: { remoteJid: from, fromMe: false, id: stanzaId, participant }, message: content };
+    }
+
+    // Unwrap view-once if present
+    const voInner: any =
+      quoted.viewOnceMessage?.message ||
+      quoted.viewOnceMessageV2?.message ||
+      (quoted as any).viewOnceMessageV2Extension?.message;
+
+    const target = voInner || quoted;
+
     try {
-      const imgMsg = voMsg.imageMessage;
-      const vidMsg = voMsg.videoMessage;
-      if (imgMsg) {
-        const { downloadMediaMessage } = await import("@whiskeysockets/baileys");
-        const buf = await downloadMediaMessage({ message: { imageMessage: imgMsg } } as any, "buffer", {});
-        await sock.sendMessage(from, { image: buf as Buffer, caption: "🔓 *View-once unlocked by MAXX XMD*" });
-      } else if (vidMsg) {
-        const { downloadMediaMessage } = await import("@whiskeysockets/baileys");
-        const buf = await downloadMediaMessage({ message: { videoMessage: vidMsg } } as any, "buffer", {});
-        await sock.sendMessage(from, { video: buf as Buffer, caption: "🔓 *View-once unlocked by MAXX XMD*" });
+      if (target.imageMessage) {
+        const buf = await downloadMediaMessage(fake({ imageMessage: target.imageMessage }) as any, "buffer", {});
+        return void await sock.sendMessage(from, {
+          image: buf as Buffer,
+          caption: `${target.imageMessage.caption ? target.imageMessage.caption + "\n\n" : ""}💾 *Saved by MAXX-XMD* ⚡`,
+        }, { quoted: msg });
       }
+      if (target.videoMessage) {
+        const buf = await downloadMediaMessage(fake({ videoMessage: target.videoMessage }) as any, "buffer", {});
+        return void await sock.sendMessage(from, {
+          video: buf as Buffer,
+          caption: `${target.videoMessage.caption ? target.videoMessage.caption + "\n\n" : ""}💾 *Saved by MAXX-XMD* ⚡`,
+        }, { quoted: msg });
+      }
+      if (target.audioMessage) {
+        const buf = await downloadMediaMessage(fake({ audioMessage: target.audioMessage }) as any, "buffer", {});
+        return void await sock.sendMessage(from, {
+          audio: buf as Buffer,
+          mimetype: target.audioMessage.mimetype || "audio/mp4",
+          ptt: target.audioMessage.ptt || false,
+        }, { quoted: msg });
+      }
+      if (target.stickerMessage) {
+        const buf = await downloadMediaMessage(fake({ stickerMessage: target.stickerMessage }) as any, "buffer", {});
+        return void await sock.sendMessage(from, { sticker: buf as Buffer }, { quoted: msg });
+      }
+      if (target.documentMessage) {
+        const buf = await downloadMediaMessage(fake({ documentMessage: target.documentMessage }) as any, "buffer", {});
+        return void await sock.sendMessage(from, {
+          document: buf as Buffer,
+          mimetype: target.documentMessage.mimetype || "application/octet-stream",
+          fileName: target.documentMessage.fileName || "file",
+          caption: `💾 *Saved by MAXX-XMD* ⚡`,
+        }, { quoted: msg });
+      }
+      await reply("❌ No downloadable media found in that message.");
     } catch (e: any) {
-      await reply(`❌ Failed: ${e.message}`);
+      await reply(`❌ Save failed: ${e.message}`);
     }
   },
 });
