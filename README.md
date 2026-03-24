@@ -1,93 +1,92 @@
 # MAXX-XMD WhatsApp Bot
 
-  > A powerful WhatsApp bot with 150+ commands and a one-click session generator. Get your session ID in seconds and deploy anywhere.
+> A powerful WhatsApp bot with 150+ commands. Get your SESSION_ID from the generator and deploy in one click.
 
-  ---
+[![Deploy to Heroku](https://www.herokucdn.com/deploy/button.svg)](https://heroku.com/deploy?template=https://github.com/Carlymaxx/maxxtechxmd)
+[![Deploy to Render](https://render.com/images/deploy-to-render-button.svg)](https://render.com/deploy?repo=https://github.com/Carlymaxx/maxxtechxmd)
 
-  ## 🚀 Get Your Session ID
+---
 
-  Visit the session generator to link your WhatsApp and get a `SESSION_ID`:
+## Quick Deploy Guide
 
-  **👉 [Generate Session ID](https://maxxtechxmd.replit.app/pair)**
+### Step 1 — Get Your SESSION_ID
+Visit **[maxxtechxmd.replit.app/pair](https://maxxtechxmd.replit.app/pair)**, enter your WhatsApp number and follow the pairing code prompt. Your `SESSION_ID` (starts with `MAXX-XMD~`) will be sent to your WhatsApp.
 
-  ### Steps:
-  1. Enter your WhatsApp number (with country code, no `+`) — e.g. `254700000000`
-  2. Click **Generate Pairing Code**
-  3. Open WhatsApp → ⋮ Menu → **Linked Devices** → **Link a Device** → **Link with phone number**
-  4. Type the 8-digit code shown on screen
-  5. Your **Session ID** appears on screen and is also sent to your WhatsApp
-  6. Copy it — you'll paste it as `SESSION_ID` when deploying
+### Step 2 — Deploy Your Bot
 
-  ---
+| Platform | One-Click Deploy | Cost |
+|----------|-----------------|------|
+| **Heroku** | [![Deploy](https://www.herokucdn.com/deploy/button.svg)](https://heroku.com/deploy?template=https://github.com/Carlymaxx/maxxtechxmd) | ~$7/mo Basic dyno |
+| **Render** | [![Deploy to Render](https://render.com/images/deploy-to-render-button.svg)](https://render.com/deploy?repo=https://github.com/Carlymaxx/maxxtechxmd) | Free tier available |
+| **Railway** | [![Deploy on Railway](https://railway.app/button.svg)](https://railway.app/template/maxxtechxmd) | ~$5/mo |
+| **Koyeb** | [Deploy on Koyeb](https://app.koyeb.com/deploy?type=git&repository=github.com/Carlymaxx/maxxtechxmd) | Free tier available |
 
-  ## ⚡ One-Click Deploy
+### Step 3 — Set Environment Variables
 
-  Fork this repo and deploy with your `SESSION_ID`:
+| Variable | Description | Example |
+|----------|-------------|---------|
+| `SESSION_ID` | **Required.** From the pairing site | `MAXX-XMD~H4s...` |
+| `OWNER_NUMBER` | Your controller number (must differ from paired number) | `254700000000` |
+| `BOT_NAME` | Bot display name | `MAXX-XMD` |
+| `OWNER_NAME` | Your display name | `MAXX` |
+| `PREFIX` | Command prefix | `.` |
+| `MODE` | `public` / `private` / `inbox` | `public` |
+| `ALWAYS_ONLINE` | Show as online 24/7 | `true` |
+| `ANTI_CALL` | Auto-reject calls | `true` |
+| `GEMINI_API_KEY` | Optional — enables AI commands (.gpt, .gemini, etc.) | — |
 
-  | Platform | Button |
-  |----------|--------|
-  | **Render** | [![Deploy to Render](https://render.com/images/deploy-to-render-button.svg)](https://render.com/deploy?repo=https://github.com/Carlymaxx/maxxtechxmd) |
-  | **Heroku** | [![Deploy to Heroku](https://www.herokucdn.com/deploy/button.svg)](https://heroku.com/deploy?template=https://github.com/Carlymaxx/maxxtechxmd) |
-  | **Railway** | [![Deploy on Railway](https://railway.app/button.svg)](https://railway.app/new/template?template=https://github.com/Carlymaxx/maxxtechxmd) |
-  | **Koyeb** | [![Deploy to Koyeb](https://www.koyeb.com/static/images/deploy/button.svg)](https://app.koyeb.com/deploy?type=git&repository=github.com/Carlymaxx/maxxtechxmd&branch=main&name=maxx-xmd) |
-  | **Replit** | [![Run on Replit](https://replit.com/badge/github/Carlymaxx/maxxtechxmd)](https://replit.com/github/Carlymaxx/maxxtechxmd) |
+---
 
-  ---
+## Commands (150+)
 
-  ## 🔧 Environment Variables
+### General
+`.ping` `.alive` `.menu` `.help` `.uptime` `.owner` `.info` `.runtime` `.speed` `.version`
 
-  | Variable | Description | Required |
-  |----------|-------------|----------|
-  | `SESSION_ID` | Your session ID from the generator (starts with `MAXX-XMD~`) | ✅ Yes |
-  | `BOT_NAME` | Custom name for your bot (default: MAXX-XMD) | No |
-  | `PREFIX` | Command prefix (default: `.`) | No |
-  | `OWNER_NUMBER` | Your WhatsApp number — enables owner commands | No |
-  | `OWNER_NAME` | Your display name in the bot | No |
-  | `MODE` | `public` / `private` / `inbox` | No |
-  | `ANTI_CALL` | Reject incoming calls (`true`/`false`) | No |
-  | `AUTO_READ` | Auto-mark messages as read | No |
-  | `ALWAYS_ONLINE` | Stay always online | No |
-  | `AUTO_VIEW_STATUS` | Auto-view status updates | No |
+### Fun & Entertainment
+`.joke` `.fact` `.quote` `.meme` `.roast` `.pickup` `.compliment` `.riddle` `.wouldyou` `.truth` `.dare`
 
-  ---
+### Games
+`.rps` (rock-paper-scissors) `.trivia` `.dice` `.flip` `.8ball` `.guess` `.hangman` `.wordscramble`
 
-  ## 📋 Commands (150+)
+### Search & Info
+`.weather` `.define` `.wiki` `.translate` `.lyrics` `.news` `.movie` `.bible` `.quran`
 
-  | Category | Commands |
-  |----------|----------|
-  | 🤖 **AI** | `.gpt` `.gemini` `.code` `.recipe` `.story` `.summarize` `.teach` |
-  | 🎵 **Audio** | `.tomp3` `.bass` `.reverse` `.robot` `.earrape` `.toptt` |
-  | ⬇️ **Download** | `.song` `.video` `.tiktok` `.instagram` `.twitter` `.facebook` |
-  | 😂 **Fun** | `.jokes` `.fact` `.quotes` `.trivia` `.memes` `.xxqc` |
-  | 🎮 **Games** | `.truth` `.dare` `.truthordare` |
-  | 👥 **Group** | `.tagall` `.kick` `.add` `.promote` `.demote` `.mute` `.poll` `.antilink` |
-  | 🕌 **Religion** | `.bible` `.quran` |
-  | 🔍 **Search** | `.weather` `.define` `.lyrics` `.translate` `.imdb` `.yts` |
-  | ⚙️ **Settings** | `.setprefix` `.mode` `.anticall` `.setwelcome` `.getsettings` |
-  | ⚽ **Sports** | EPL, LaLiga, CL, Bundesliga, Serie A, Ligue1, EFL, WC, WWE |
-  | 🔧 **Tools** | `.sticker` `.qrcode` `.tinyurl` `.calculate` `.genpass` `.fancy` |
+### Sports
+`.livescores` `.standings` `.player` `.team` `.nextmatch` `.lastmatch`
 
-  Type `.menu` to see all categories, or `.menu <category>` for specific commands.
+### Downloads
+`.ytmp3` `.ytmp4` `.tiktok` `.instagram` `.shorten`
 
-  ---
+### AI (requires GEMINI_API_KEY)
+`.gpt` `.gemini` `.imagine` `.sticker` `.chatbot on/off`
 
-  ## 🛠 Self-Host
+### Group Management
+`.kick` `.add` `.promote` `.demote` `.mute` `.unmute` `.link` `.revoke` `.tagall` `.hidetag` `.welcome on/off` `.antilink on/off`
 
-  ```bash
-  git clone https://github.com/Carlymaxx/maxxtechxmd.git
-  cd maxxtechxmd
-  pnpm install
-  SESSION_ID="MAXX-XMD~your_session_here" pnpm --filter @workspace/api-server run dev
-  ```
+### Settings (Owner/Sudo)
+`.mode` `.setprefix` `.setname` `.autoreact on/off` `.autoread on/off` `.anticall on/off` `.alwaysonline on/off`
 
-  ---
+---
 
-  ## 📞 Support
+## Self-Fork & Customize
 
-  - 🌐 Session Generator: [maxxtechxmd.replit.app](https://maxxtechxmd.replit.app/pair)
-  - ⭐ Star this repo if it helped you!
+```bash
+git clone https://github.com/Carlymaxx/maxxtechxmd.git
+cd maxxtechxmd
+npm install
+# Set your SESSION_ID and other vars in .env
+npm start
+```
 
-  ---
+---
 
-  > _Built with ❤️ by MAXX XMD Team — Powered by Baileys_
-  
+## Tech Stack
+- **Runtime:** Node.js 20 + TypeScript
+- **WhatsApp:** @whiskeysockets/baileys
+- **Build:** esbuild (single bundled output)
+- **Server:** Express 5
+- **Package Manager:** npm workspaces
+
+---
+
+> Made with love by **Carlymaxx** | Session generator: [maxxtechxmd.replit.app](https://maxxtechxmd.replit.app/pair)
