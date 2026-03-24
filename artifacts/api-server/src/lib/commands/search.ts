@@ -381,3 +381,124 @@ registerCommand({
     await reply("ℹ️ *Shazam Feature*\n\nReply to an audio message and this feature will try to identify the song.\n\n_Note: Full Shazam recognition requires a premium API. For now, use .lyrics <artist> - <song> to search._");
   },
 });
+
+registerCommand({
+  name: "scan",
+  aliases: ["check", "wa"],
+  category: "Search",
+  description: "Check if a phone number is on WhatsApp",
+  handler: async ({ sock, args, reply }) => {
+    const number = args[0]?.replace(/\D/g, "");
+    if (!number) return reply("❓ Usage: .scan <number>\nExample: .scan 2547XXXXXXXX");
+    const jid = number + "@s.whatsapp.net";
+    try {
+      const [result] = await sock.onWhatsApp(jid);
+      if (!result?.exists) {
+        return reply(
+          `╔══════════════════════╗\n║ 🔍 *SCAN RESULT* 🔍\n╚══════════════════════╝\n\n📞 *Number:* ${number}\n❌ *Status:* Not on WhatsApp\n\n> _MAXX-XMD_ ⚡`
+        );
+      }
+      await reply(
+        `╔══════════════════════╗\n║ 🔍 *SCAN RESULT* 🔍\n╚══════════════════════╝\n\n📞 *Number:* ${number}\n✅ *Status:* Active on WhatsApp\n🆔 *JID:* ${result.jid}\n\n> _MAXX-XMD_ ⚡`
+      );
+    } catch {
+      await reply("❌ Scan failed. Try again later.");
+    }
+  },
+});
+
+registerCommand({
+  name: "stalk",
+  aliases: ["profile", "userinfo"],
+  category: "Search",
+  description: "Get WhatsApp profile info of a number",
+  handler: async ({ sock, from, msg, args, reply }) => {
+    const number = args[0]?.replace(/\D/g, "");
+    if (!number) return reply("❓ Usage: .stalk <number>\nExample: .stalk 2547XXXXXXXX");
+    const jid = number + "@s.whatsapp.net";
+    try {
+      const [result] = await sock.onWhatsApp(jid);
+      if (!result?.exists) return reply(`❌ Number *${number}* is not on WhatsApp.\n\n> _MAXX-XMD_ ⚡`);
+      let ppUrl = "";
+      try { ppUrl = await sock.profilePictureUrl(jid, "image"); } catch {}
+      let about = "(No status/bio)";
+      try {
+        const s = await sock.fetchStatus(jid);
+        if ((s as any)?.status) about = (s as any).status;
+      } catch {}
+      const caption =
+        `╔═══════════════════╗\n║ 🔍 *WHATSAPP STALK* 🔍\n╚═══════════════════╝\n\n📞 *Number:* ${number}\n✅ *On WhatsApp:* Yes\n🆔 *JID:* ${result.jid}\n📝 *Bio:* ${about}\n🖼️ *Profile Pic:* ${ppUrl ? "✅ Visible" : "🔒 Hidden"}\n\n> _MAXX-XMD_ ⚡`;
+      if (ppUrl) {
+        await sock.sendMessage(from, { image: { url: ppUrl }, caption }, { quoted: msg });
+      } else {
+        await reply(caption);
+      }
+    } catch (e: any) {
+      await reply(`❌ Failed: ${e.message}`);
+    }
+  },
+});
+
+registerCommand({
+  name: "pp",
+  aliases: ["getpp", "pfp", "avatar"],
+  category: "Search",
+  description: "Get profile picture of a number",
+  handler: async ({ sock, from, msg, args, reply }) => {
+    let jid: string;
+    if (args[0]) {
+      jid = args[0].replace(/\D/g, "") + "@s.whatsapp.net";
+    } else {
+      const ctx = msg.message?.extendedTextMessage?.contextInfo;
+      jid = ctx?.participant || msg.key.participant || from;
+    }
+    try {
+      const url = await sock.profilePictureUrl(jid, "image");
+      await sock.sendMessage(
+        from,
+        { image: { url }, caption: `🖼️ *Profile Picture*\n👤 ${jid.split("@")[0]}\n\n> _MAXX-XMD_ ⚡` },
+        { quoted: msg }
+      );
+    } catch {
+      await reply("❌ Profile picture is private or not available.\n\n> _MAXX-XMD_ ⚡");
+    }
+  },
+});
+
+registerCommand({
+  name: "ip",
+  aliases: ["iplookup", "geoip"],
+  category: "Search",
+  description: "Lookup IP address or domain geolocation",
+  handler: async ({ args, reply }) => {
+    const target = args[0];
+    if (!target) return reply("❓ Usage: .ip <address or domain>\nExample: .ip 8.8.8.8");
+    try {
+      const res = await fetch(`http://ip-api.com/json/${encodeURIComponent(target)}?fields=status,message,country,regionName,city,zip,lat,lon,timezone,isp,org,query`);
+      const d = await res.json() as any;
+      if (d.status !== "success") return reply(`❌ ${d.message || "Could not look up that address."}\n\n> _MAXX-XMD_ ⚡`);
+      await reply(
+        `╔══════════════════╗\n║ 🌐 *IP LOOKUP* 🌐\n╚══════════════════╝\n\n🔍 *IP:* ${d.query}\n🏳️ *Country:* ${d.country}\n🏙️ *Region:* ${d.regionName}\n🌆 *City:* ${d.city}\n📮 *Zip:* ${d.zip || "N/A"}\n🗺️ *Coords:* ${d.lat}, ${d.lon}\n🕒 *Timezone:* ${d.timezone}\n📡 *ISP:* ${d.isp}\n🏢 *Org:* ${d.org || "N/A"}\n\n> _MAXX-XMD_ ⚡`
+      );
+    } catch {
+      await reply("❌ Lookup failed. Try again later.");
+    }
+  },
+});
+
+registerCommand({
+  name: "qr",
+  aliases: ["qrcode", "makeqr"],
+  category: "Search",
+  description: "Generate a QR code from any text or URL",
+  handler: async ({ sock, from, msg, args, reply }) => {
+    const text = args.join(" ");
+    if (!text) return reply("❓ Usage: .qr <text or URL>\nExample: .qr https://github.com/Carlymaxx/maxxtechxmd");
+    const url = `https://api.qrserver.com/v1/create-qr-code/?size=400x400&data=${encodeURIComponent(text)}`;
+    await sock.sendMessage(
+      from,
+      { image: { url }, caption: `📱 *QR Code Generated*\n\n📝 _${text.slice(0, 80)}${text.length > 80 ? "..." : ""}_\n\n> _MAXX-XMD_ ⚡` },
+      { quoted: msg }
+    );
+  },
+});
