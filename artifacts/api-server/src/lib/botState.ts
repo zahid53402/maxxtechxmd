@@ -1,7 +1,17 @@
 import fs from "fs";
 import path from "path";
 
-const WORKSPACE_ROOT = path.join(process.cwd(), "../..");
+// On Heroku the Procfile runs `node artifacts/api-server/dist/index.mjs` from /app,
+// so process.cwd() === "/app" and going "../.." would reach the filesystem root.
+// On Replit dev, pnpm runs scripts from the package directory, so cwd is
+// /home/runner/workspace/artifacts/api-server and "../.." is the workspace root.
+// The DATA_DIR env var overrides everything; DYNO is set on all Heroku dynos.
+const WORKSPACE_ROOT: string = (() => {
+  if (process.env.DATA_DIR) return process.env.DATA_DIR;
+  if (process.env.DYNO) return process.cwd(); // Heroku: cwd is already the app root (/app)
+  return path.join(process.cwd(), "../.."); // Replit dev: go up to workspace root
+})();
+
 const SETTINGS_FILE = path.join(WORKSPACE_ROOT, "settings.json");
 const SESSION_STORE_FILE = path.join(WORKSPACE_ROOT, "session_store.json");
 
@@ -112,6 +122,7 @@ export function deleteSessionMeta(id: string): void {
 }
 
 export const AUTH_DIR = path.join(WORKSPACE_ROOT, "auth_info_baileys");
+export { WORKSPACE_ROOT };
 
 export function ensureAuthDir(): void {
   if (!fs.existsSync(AUTH_DIR)) {
