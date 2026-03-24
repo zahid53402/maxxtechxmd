@@ -30,6 +30,8 @@ async function buildAll() {
     external: [
       "*.node",
       "sharp",
+      "fluent-ffmpeg",
+      "@distube/ytdl-core",
       "better-sqlite3",
       "sqlite3",
       "canvas",
