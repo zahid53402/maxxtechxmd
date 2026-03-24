@@ -1413,17 +1413,23 @@ export async function handleMessage(sock: WASocket, msg: WAMessage) {
     return;
   }
 
-  // Auto-react to every command with the bot sticker
+  // Always react to every command with a random emoji
+  const REACT_EMOJIS = [
+    "⚡","🔥","💫","✨","🌟","💎","🚀","🎯","💥","🎊",
+    "🏆","👑","🎉","🤩","😎","🐉","🌈","🦋","💪","🎶",
+    "🍀","🌺","🦅","🌙","☄️","🎸","🏄","🌊","🎭","🔮",
+  ];
+  try {
+    const emoji = REACT_EMOJIS[Math.floor(Math.random() * REACT_EMOJIS.length)];
+    await sock.sendMessage(from, { react: { text: emoji, key: msg.key } });
+  } catch {}
+
+  // Also send auto-sticker reaction if owner has enabled it
   if (settings.autoreaction) {
     try {
       const stickerBuf = await getAutoSticker();
       if (stickerBuf) {
         await sock.sendMessage(from, { sticker: stickerBuf }, { quoted: msg });
-      } else {
-        // Fallback emoji react if sticker isn't ready yet
-        const FALLBACK = ["⚡","🔥","💫","✨","🌟","💎","🚀","🎯","💥","🎊"];
-        const emoji = FALLBACK[Math.floor(Math.random() * FALLBACK.length)];
-        await sock.sendMessage(from, { react: { text: emoji, key: msg.key } });
       }
     } catch {}
   }
