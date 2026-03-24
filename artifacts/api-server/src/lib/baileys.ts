@@ -25,6 +25,8 @@ export const latestQR: Record<string, string> = {};
 export const stoppingSessions: Set<string> = new Set();
 export const pendingPairings: Record<string, string> = {};
 
+const startupMessageSent = new Set<string>();
+
 const sessionIntervals: Record<string, ReturnType<typeof setInterval>[]> = {};
 
 export function getBotUptime(): number {
@@ -99,6 +101,35 @@ export async function startBotSession(sessionId = "main"): Promise<WASocket> {
         setTimeout(async () => {
           await sendSessionIdToUser(sessionId, phone, sock);
         }, 5000);
+      }
+
+      // Send a "bot is online" message to the owner when first connecting on a deployed bot
+      const isDeployedBot = !!process.env.SESSION_ID;
+      const ownerNumber = process.env.OWNER_NUMBER;
+      if (isDeployedBot && ownerNumber && !startupMessageSent.has(sessionId)) {
+        startupMessageSent.add(sessionId);
+        setTimeout(async () => {
+          try {
+            const settings = loadSettings();
+            const botName = settings.botName || "MAXX-XMD";
+            const prefix = settings.prefix || ".";
+            const mode = settings.mode || "public";
+            const ownerJid = ownerNumber.replace(/[^0-9]/g, "") + "@s.whatsapp.net";
+            await sock.sendMessage(ownerJid, {
+              text:
+                `✅ *${botName} IS NOW ONLINE!*\n\n` +
+                `🟢 Your bot has connected successfully and is ready to use.\n\n` +
+                `*Bot Name:* ${botName}\n` +
+                `*Prefix:* ${prefix}\n` +
+                `*Mode:* ${mode}\n\n` +
+                `Type *${prefix}menu* to see all commands.\n\n` +
+                `> _Powered by MAXX-XMD_ ⚡`,
+            });
+            logger.info({ sessionId, ownerNumber }, "Startup success message sent to owner");
+          } catch (err) {
+            logger.error({ err }, "Failed to send startup message to owner");
+          }
+        }, 8000);
       }
     }
 
