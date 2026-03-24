@@ -30,7 +30,7 @@
       "required": false
     },
     "OWNER_NUMBER": {
-      "description": "Your WhatsApp number with country code e.g. 254700000000",
+      "description": "A DIFFERENT WhatsApp number to control the bot (NOT the number you used to generate the SESSION_ID). Include country code e.g. 254700000000",
       "required": false
     },
     "OWNER_NAME": {
