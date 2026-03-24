@@ -442,7 +442,7 @@ registerCommand({
   name: "video",
   aliases: ["ytvideo", "ytv", "youtube"],
   category: "Download",
-  description: "Download a YouTube video",
+  description: "Download a YouTube video as MP4",
   handler: async ({ sock, from, msg, args, reply }) => {
     const query = args.join(" ");
     if (!query) return reply(
@@ -454,23 +454,49 @@ registerCommand({
       `• .video https://youtu.be/...\n\n` +
       `_Max 5 minutes. For audio only use .song_`
     );
-    await reply(`🔍 Searching *${query}*... Please wait ⏳`);
+    await reply(`╔═══════════════════╗\n║ 🎬 *VIDEO DL* 🎬\n╚═══════════════════╝\n\n🔍 Searching *${query}*...\n⏳ Please wait...`);
     try {
-      const { downloadVideo } = await import("./ytdlpUtil.js");
-      const { buffer, title, duration } = await downloadVideo(query);
-      if (buffer.length > 55 * 1024 * 1024) {
-        return reply(`⚠️ File too large (${Math.round(buffer.length / 1024 / 1024)}MB). WhatsApp limit is 55MB.\n\nTry a shorter clip or use .song for audio only.`);
+      // Step 1: Get YouTube URL (scrape search if text query)
+      let ytUrl = query;
+      if (!query.match(/youtube\.com|youtu\.be/i)) {
+        const { searchYouTube } = await import("./ytdlpUtil.js");
+        ytUrl = await searchYouTube(query);
       }
-      const mins = Math.floor(duration / 60);
-      const secs = (duration % 60).toString().padStart(2, "0");
+
+      // Step 2: Use eliteprotech ytdown API to get MP4 download link
+      const apiRes = await fetch(
+        `https://eliteprotech-apis.zone.id/ytdown?url=${encodeURIComponent(ytUrl)}&format=mp4`,
+        { signal: AbortSignal.timeout(20000) }
+      );
+      const apiData = await apiRes.json() as any;
+      if (!apiData.success || !apiData.downloadURL) {
+        throw new Error("Could not get video download link");
+      }
+
+      const videoTitle = apiData.title || "Video";
+      await reply(`✅ Found *${videoTitle}*\n⬇️ Downloading...`);
+
+      // Step 3: Download the MP4 buffer
+      const dlRes = await fetch(apiData.downloadURL, { signal: AbortSignal.timeout(90000) });
+      if (!dlRes.ok) throw new Error(`Download server returned ${dlRes.status}`);
+      const buffer = Buffer.from(await dlRes.arrayBuffer());
+
+      if (buffer.length > 55 * 1024 * 1024) {
+        return reply(
+          `⚠️ *File too large* (${Math.round(buffer.length / 1024 / 1024)}MB)\n` +
+          `WhatsApp limit is 55MB. Try a shorter clip or use .song for audio only.`
+        );
+      }
+
       await sock.sendMessage(from, {
         video: buffer,
-        caption: `🎬 *${title}*\n⏱️ ${mins}:${secs}`,
+        caption: `🎬 *${videoTitle}*`,
         mimetype: "video/mp4",
-        fileName: `${title}.mp4`,
+        fileName: `${videoTitle}.mp4`,
       } as any, { quoted: msg });
+
     } catch (e: any) {
-      await reply(`❌ Download failed: ${e.message}`);
+      await reply(`❌ *Download Failed*\n\n${e.message?.slice(0, 150) || "Try again later"}`);
     }
   },
 });
