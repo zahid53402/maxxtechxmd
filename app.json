@@ -68,6 +68,11 @@
       "description": "Auto-view WhatsApp status updates (true/false)",
       "value": "true",
       "required": false
+    },
+    "NPM_CONFIG_LEGACY_PEER_DEPS": {
+      "description": "Allow npm to resolve peer dependency conflicts",
+      "value": "true",
+      "required": false
     }
   },
   "formation": {
