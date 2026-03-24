@@ -147,11 +147,58 @@ registerCommand({
 
 registerCommand({
   name: "pair",
-  aliases: ["getid", "session"],
+  aliases: ["getid", "session", "pairdevice"],
   category: "General",
-  description: "Get your session ID",
-  handler: async ({ reply }) => {
-    await reply(`🔗 *Get Your Session ID*\n\nVisit the link below to pair your WhatsApp and get your SESSION_ID:\n\n🌐 https://maxxtechxmd.replit.app/pair\n\n_Enter your phone number with country code (e.g. 254712345678) and follow the instructions_`);
+  description: "Generate a WhatsApp pairing code (owner only)",
+  ownerOnly: true,
+  handler: async ({ args, settings, reply }) => {
+    const phone = args[0]?.replace(/\D/g, "");
+    if (!phone || phone.length < 7) {
+      return reply(`╔══════════════════════╗
+║ 🔗 *PAIR DEVICE* 🔗
+╚══════════════════════╝
+
+📌 *Usage:* .pair <phone number>
+📝 *Example:* .pair 254712345678
+
+Include country code, no + or spaces.
+
+🌐 *Or use web pairing:*
+https://maxxtechxmd.replit.app/pair`);
+    }
+
+    await reply(`╔══════════════════════╗
+║ 🔗 *PAIR DEVICE* 🔗
+╚══════════════════════╝
+
+📱 *Number:* +${phone}
+⏳ Generating pairing code...
+Please wait up to 30 seconds...`);
+
+    try {
+      const { startPairingSession } = await import("../baileys.js");
+      const sessionId = `bot-pair-${Date.now()}`;
+      const { pairingCode } = await startPairingSession(sessionId, phone);
+
+      await reply(`✅ *PAIRING CODE READY!*
+
+🔑 Code: *${pairingCode}*
+
+📱 *Steps on WhatsApp:*
+1️⃣ Open WhatsApp Settings
+2️⃣ Linked Devices
+3️⃣ Link a Device
+4️⃣ Enter the code above 👆
+
+⏱️ _Code expires in ~60 seconds!_`);
+    } catch (e: any) {
+      await reply(`❌ Failed to generate pairing code.
+
+Try the web method instead:
+🌐 https://maxxtechxmd.replit.app/pair
+
+Error: ${e.message?.slice(0, 100) || "Unknown"}`);
+    }
   },
 });
 
