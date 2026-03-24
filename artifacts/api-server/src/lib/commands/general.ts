@@ -149,8 +149,7 @@ registerCommand({
   name: "pair",
   aliases: ["getid", "session", "pairdevice"],
   category: "General",
-  description: "Generate a WhatsApp pairing code (owner only)",
-  ownerOnly: true,
+  description: "Generate a WhatsApp pairing code for any device",
   handler: async ({ args, settings, reply }) => {
     const phone = args[0]?.replace(/\D/g, "");
     if (!phone || phone.length < 7) {
