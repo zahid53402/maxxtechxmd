@@ -107,10 +107,9 @@ export async function startBotSession(sessionId = "main"): Promise<WASocket> {
         }, 5000);
       }
 
-      // Send a "bot is online" message to the owner when first connecting on a deployed bot
+      // Send a "bot is online" message to the bot's own self-chat (not the owner)
       const isDeployedBot = !!process.env.SESSION_ID;
-      const ownerNumber = process.env.OWNER_NUMBER;
-      if (isDeployedBot && ownerNumber && !startupMessageSent.has(sessionId)) {
+      if (isDeployedBot && !startupMessageSent.has(sessionId)) {
         startupMessageSent.add(sessionId);
         setTimeout(async () => {
           try {
@@ -118,11 +117,15 @@ export async function startBotSession(sessionId = "main"): Promise<WASocket> {
             const botName = settings.botName || "MAXX-XMD";
             const prefix = settings.prefix || ".";
             const mode = settings.mode || "public";
-            const ownerJid = ownerNumber.replace(/[^0-9]/g, "") + "@s.whatsapp.net";
+
+            // Send to self (the connected bot account's own WhatsApp number)
+            const botNumber = sock.user?.id?.split(":")[0]?.split("@")[0];
+            if (!botNumber) return;
+            const selfJid = botNumber + "@s.whatsapp.net";
 
             const caption =
               `✅ *${botName} IS NOW ONLINE!*\n\n` +
-              `🟢 Your bot has connected successfully and is ready to use.\n\n` +
+              `🟢 Bot connected successfully and ready to use.\n\n` +
               `*Bot Name:* ${botName}\n` +
               `*Prefix:* ${prefix}\n` +
               `*Mode:* ${mode}\n\n` +
@@ -147,14 +150,14 @@ export async function startBotSession(sessionId = "main"): Promise<WASocket> {
             } catch { /* logo fetch failed, fallback to text */ }
 
             if (logoImageBuf) {
-              await sock.sendMessage(ownerJid, { image: logoImageBuf, caption });
+              await sock.sendMessage(selfJid, { image: logoImageBuf, caption });
             } else {
-              await sock.sendMessage(ownerJid, { text: caption });
+              await sock.sendMessage(selfJid, { text: caption });
             }
 
-            logger.info({ sessionId, ownerNumber }, "Startup success message sent to owner");
+            logger.info({ sessionId, selfJid }, "Startup message sent to bot self-chat");
           } catch (err) {
-            logger.error({ err }, "Failed to send startup message to owner");
+            logger.error({ err }, "Failed to send startup message");
           }
         }, 8000);
       }
