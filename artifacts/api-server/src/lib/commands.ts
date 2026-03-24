@@ -46,6 +46,13 @@ import "./commands/anime.js";
 import "./commands/pokemon.js";
 import "./commands/education.js";
 import "./commands/morefun.js";
+import "./commands/sticker.js";
+import "./commands/protection.js";
+import "./commands/economy.js";
+import "./commands/games2.js";
+import "./commands/media2.js";
+import "./commands/country.js";
+import "./commands/creative2.js";
 
 // ── Tools / download / audio / AI — inline here ──────────────────────────────
 import { registerCommand } from "./commands/types.js";
