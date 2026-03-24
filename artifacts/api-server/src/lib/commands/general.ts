@@ -25,14 +25,17 @@ registerCommand({
   category: "General",
   description: "Show bot status",
   handler: async ({ sock, from, msg, settings }) => {
-    const mem = process.memoryUsage();
-    const total = os.totalmem();
-    const used = mem.rss;
-    const pct = Math.round((used / total) * 100);
+    const totalB = os.totalmem();
+    const freeB  = os.freemem();
+    const usedB  = totalB - freeB;
+    const pct    = Math.round((usedB / totalB) * 100);
+    const totalMB = (totalB / 1024 / 1024).toFixed(0);
+    const usedMB  = (usedB  / 1024 / 1024).toFixed(0);
     const upt = process.uptime();
     const h = Math.floor(upt / 3600);
     const m = Math.floor((upt % 3600) / 60);
     const s = Math.floor(upt % 60);
+    const bar = ramBar(pct);
     const text = `╔══════════════════════╗
 ║  ✨ *MAXX-XMD IS ALIVE!* ✨
 ╚══════════════════════╝
@@ -42,7 +45,8 @@ registerCommand({
 🔧 *Prefix:* ${settings.prefix}
 🌐 *Mode:* ${settings.mode}
 ⏰ *Uptime:* ${h}h ${m}m ${s}s
-💾 *RAM:* ${formatBytes(used)} / ${formatBytes(total)} [${pct}%]
+💾 *RAM:* ${usedMB}MB / ${totalMB}MB [${pct}%]
+${bar}
 📦 *Version:* 2.0.0
 🟢 *Status:* Active & Running
 
