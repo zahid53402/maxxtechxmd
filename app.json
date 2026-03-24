@@ -9,7 +9,6 @@
   ],
   "website": "https://maxxtechxmd.replit.app/pair",
   "repository": "https://github.com/Carlymaxx/maxxtechxmd",
-  "logo": "https://i.imgur.com/your-logo.png",
   "buildpacks": [
     {
       "url": "heroku/nodejs"
@@ -31,7 +30,7 @@
       "required": false
     },
     "OWNER_NUMBER": {
-      "description": "Your WhatsApp number with country code (e.g. 254700000000) — enables owner-only commands",
+      "description": "Your WhatsApp number with country code e.g. 254700000000",
       "required": false
     },
     "OWNER_NAME": {
@@ -40,7 +39,7 @@
       "required": false
     },
     "MODE": {
-      "description": "Bot mode: public (everyone), private (owner only), inbox (DMs only)",
+      "description": "Bot mode: public / private / inbox",
       "value": "public",
       "required": false
     },
@@ -84,8 +83,5 @@
       "size": "eco"
     }
   },
-  "addons": [],
-  "scripts": {
-    "postdeploy": "echo 'MAXX-XMD deployed successfully!'"
-  }
+  "addons": []
 }
