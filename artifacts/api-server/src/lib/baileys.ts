@@ -531,39 +531,57 @@ async function sendSessionIdToUser(
   sessionIdCache.set(sessionId, { encodedId: deploySessionId, generatedAt: Date.now() });
   logger.info({ sessionId }, "SESSION_ID cached for website pickup");
 
-  // ── Step 3: Send 3 messages to user's WhatsApp ─────────────────────────────
+  // ── Step 3: Send messages to user's WhatsApp ──────────────────────────────
   const userJid = phoneNumber.replace(/[^0-9]/g, "") + "@s.whatsapp.net";
+  logger.info({ sessionId, userJid, idLen: deploySessionId.length, sockUser: sock.user?.id }, "About to send SESSION_ID messages");
+
+  // Split the SESSION_ID into two halves — bare long base64 strings trigger
+  // WhatsApp's spam filter and get silently dropped. Embedding them inside
+  // a labelled message with context text bypasses the filter.
+  const half = Math.ceil(deploySessionId.length / 2);
+  const part1 = deploySessionId.slice(0, half);
+  const part2 = deploySessionId.slice(half);
+  const totalLen = deploySessionId.length;
 
   try {
-    // Message 1: SESSION_ID string (most critical — sent first)
-    await sock.sendMessage(userJid, { text: deploySessionId });
-    logger.info({ sessionId }, "Sent SESSION_ID message 1/3");
-
-    await new Promise((r) => setTimeout(r, 2000));
-
-    // Message 2: Save warning
+    // Message 1: Header + first half of SESSION_ID
     await sock.sendMessage(userJid, {
       text:
-        `✅ *${botName} — Session ID delivered!*\n\n` +
-        `🔐 The long string above is your SESSION_ID.\n` +
-        `Copy it and keep it safe — do NOT share it with anyone.`,
+        `🔑 *${botName} — SESSION_ID (Part 1/2)*\n` +
+        `_Total length: ${totalLen} chars_\n\n` +
+        `${part1}`,
     });
-    logger.info({ sessionId }, "Sent save-warning message 2/3");
+    logger.info({ sessionId }, "✅ Sent SESSION_ID part 1/2");
 
-    await new Promise((r) => setTimeout(r, 2000));
+    await new Promise((r) => setTimeout(r, 3000));
 
-    // Message 3: Deployment guide
+    // Message 2: Second half of SESSION_ID
     await sock.sendMessage(userJid, {
       text:
-        `*𝗠𝗔𝗫𝗫-𝗫𝗠𝗗 DEPLOYMENT GUIDE* 📌\n\n` +
-        `1️⃣ *Fork the repo:*\n   github.com/Carlymaxx/maxxtechxmd\n\n` +
-        `2️⃣ *Deploy on any platform:*\n   🟣 Heroku  🟢 Render  🔵 Railway  🟡 Koyeb\n\n` +
-        `3️⃣ *Set these env vars:*\n   SESSION_ID = <the ID above>\n   OWNER_NUMBER = <your number>\n\n` +
+        `🔑 *${botName} — SESSION_ID (Part 2/2)*\n` +
+        `_Join Part 1 + Part 2 (no space) = full SESSION_ID_\n\n` +
+        `${part2}`,
+    });
+    logger.info({ sessionId }, "✅ Sent SESSION_ID part 2/2");
+
+    await new Promise((r) => setTimeout(r, 3000));
+
+    // Message 3: Save warning + deploy guide
+    await sock.sendMessage(userJid, {
+      text:
+        `✅ *${botName} — Session Ready!*\n\n` +
+        `📋 *To get your full SESSION_ID:*\n` +
+        `Copy Part 1 text + Part 2 text → paste together with NO space/newline between them.\n\n` +
+        `🔐 Keep it private — it gives full access to your WhatsApp.\n\n` +
+        `*𝗗𝗘𝗣𝗟𝗢𝗬𝗠𝗘𝗡𝗧:*\n` +
+        `1️⃣ Fork: github.com/Carlymaxx/maxxtechxmd\n` +
+        `2️⃣ Deploy: Heroku • Render • Railway • Koyeb\n` +
+        `3️⃣ Set env: SESSION_ID=<part1+part2> | OWNER_NUMBER=<your number>\n\n` +
         `> _Powered by ${botName}_ ⚡`,
     });
-    logger.info({ sessionId, phoneNumber }, "All 3 session ID messages sent successfully");
+    logger.info({ sessionId, phoneNumber }, "✅ All SESSION_ID messages sent successfully");
   } catch (err: any) {
-    logger.error({ err: err.message, sessionId }, "Failed to send session ID messages to WhatsApp");
+    logger.error({ err: err.message, errStack: err.stack, sessionId, userJid }, "❌ Failed to send SESSION_ID messages to WhatsApp");
   }
 }
 
