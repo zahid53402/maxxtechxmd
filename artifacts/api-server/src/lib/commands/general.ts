@@ -50,13 +50,17 @@ ${bar}
 📦 *Version:* 2.0.0
 🟢 *Status:* Active & Running
 
-📢 *Channel:* https://whatsapp.com/channel/0029Vb6XNTjAInPblhlwnm2J`;
+`;
     const botpic: string = (settings as any).botpic || "https://i.postimg.cc/YSXgK0Wb/Whats-App-Image-2025-11-22-at-08-20-26.jpg";
     try {
       await sock.sendMessage(from, { image: { url: botpic }, caption: text }, { quoted: msg });
     } catch {
       await sock.sendMessage(from, { text }, { quoted: msg });
     }
+    // Send channel URL as standalone so WhatsApp renders the "View channel" button
+    await sock.sendMessage(from, {
+      text: `📢 *Follow ${settings.botName} on WhatsApp Channel* — tap below 👇\n\nhttps://whatsapp.com/channel/0029Vb6XNTjAInPblhlwnm2J`,
+    });
   },
 });
 
@@ -335,9 +339,7 @@ registerCommand({
         text += `╚${"═".repeat(22)}╝\n\n`;
       }
 
-      text +=
-        `https://whatsapp.com/channel/0029Vb6XNTjAInPblhlwnm2J\n\n` +
-        `> _Powered by ${botName}_ ⚡`;
+      text += `> _Powered by ${botName}_ ⚡`;
 
       const MENU_IMAGES = [
         "https://files.catbox.moe/jlz9dq.png",
@@ -356,6 +358,10 @@ registerCommand({
       } catch {
         await sock.sendMessage(from, { text }, { quoted: msg });
       }
+      // Send channel URL as a separate standalone message so WhatsApp renders the "View channel" button
+      await sock.sendMessage(from, {
+        text: `📢 *Follow ${botName} on WhatsApp Channel* — tap below 👇\n\nhttps://whatsapp.com/channel/0029Vb6XNTjAInPblhlwnm2J`,
+      });
       return;
     }
 
