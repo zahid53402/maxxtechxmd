@@ -536,24 +536,24 @@ async function sendSessionIdToUser(
   logger.info({ sessionId, userJid, idLen: deploySessionId.length, sockUser: sock.user?.id }, "About to send SESSION_ID to WhatsApp");
 
   try {
-    // Message 1: SESSION_ID as a .txt file document
-    // WhatsApp does NOT content-scan file attachments, so base64 is delivered safely.
-    // Plain text messages containing base64 are silently dropped by WA's spam filter.
-    const fileBuffer = Buffer.from(deploySessionId, "utf8");
+    // Message 1: Header
     await sock.sendMessage(userJid, {
-      document: fileBuffer,
-      mimetype: "text/plain",
-      fileName: "MAXX-XMD-SESSION-ID.txt",
-      caption:
-        `🔑 *${botName} — Your SESSION_ID*\n\n` +
-        `📂 Open this file → copy ALL the text inside → that is your SESSION_ID.\n\n` +
+      text:
+        `🔑 *${botName} — Your SESSION_ID is ready!*\n\n` +
+        `👇 *Long-press the next message → Copy* to grab your SESSION_ID.\n\n` +
         `🔐 Keep it private — it gives full access to your WhatsApp.`,
     });
-    logger.info({ sessionId }, "✅ Sent SESSION_ID as .txt file attachment");
+    logger.info({ sessionId }, "✅ Sent SESSION_ID header message");
+
+    await new Promise((r) => setTimeout(r, 600));
+
+    // Message 2: SESSION_ID as plain copyable text
+    await sock.sendMessage(userJid, { text: deploySessionId });
+    logger.info({ sessionId }, "✅ Sent SESSION_ID as plain text");
 
     await new Promise((r) => setTimeout(r, 800));
 
-    // Message 2: Deployment guide (plain text — always delivered)
+    // Message 3: Deployment guide
     await sock.sendMessage(userJid, {
       text:
         `*𝗠𝗔𝗫𝗫-𝗫𝗠𝗗 DEPLOYMENT GUIDE* 📌\n\n` +
@@ -561,7 +561,7 @@ async function sendSessionIdToUser(
         `2️⃣ *Deploy on any platform:*\n` +
         `   🟣 Heroku  🟢 Render  🔵 Railway  🟡 Koyeb\n\n` +
         `3️⃣ *Set these env vars:*\n` +
-        `   SESSION_ID = <text from the file above>\n` +
+        `   SESSION_ID = <paste the copied text>\n` +
         `   OWNER_NUMBER = <your number>\n\n` +
         `> _Powered by ${botName}_ ⚡`,
     });
