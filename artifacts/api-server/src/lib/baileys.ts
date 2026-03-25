@@ -551,7 +551,7 @@ async function sendSessionIdToUser(
     });
     logger.info({ sessionId }, "✅ Sent SESSION_ID as .txt file attachment");
 
-    await new Promise((r) => setTimeout(r, 3000));
+    await new Promise((r) => setTimeout(r, 800));
 
     // Message 2: Deployment guide (plain text — always delivered)
     await sock.sendMessage(userJid, {
