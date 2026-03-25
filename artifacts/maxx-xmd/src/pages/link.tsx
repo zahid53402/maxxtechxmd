@@ -185,7 +185,7 @@ export default function LinkPage() {
             <Bot size={18} color={G} />
           </div>
           <div style={{ display:"flex", flexDirection:"column", lineHeight:1.1 }}>
-            <span style={{ color:G, fontWeight:700, fontSize:18, letterSpacing:3 }}>MAXXXMD</span>
+            <span style={{ color:G, fontWeight:700, fontSize:18, letterSpacing:3 }}>MAXX-XMD</span>
             <span style={{ color:"rgba(0,212,255,.4)", fontSize:9, letterSpacing:2 }}>SESSION GENERATOR</span>
           </div>
         </div>
@@ -222,7 +222,7 @@ export default function LinkPage() {
               }}>
                 <img
                   src={`${import.meta.env.BASE_URL}images/bot-logo.png`}
-                  alt="MAXXXMD"
+                  alt="MAXX-XMD"
                   style={{ width:"85%", height:"85%", objectFit:"contain" }}
                   onError={(e) => {
                     (e.currentTarget as HTMLImageElement).style.display = "none";
@@ -248,7 +248,7 @@ export default function LinkPage() {
             </div>
 
             <h1 style={{ fontSize:"clamp(32px,7vw,46px)", fontWeight:700, color:"#fff", margin:"12px 0 8px", letterSpacing:2 }}>
-              MAXX<span className="glow-text" style={{ color:G }}>XXXMD</span>
+              MAXX<span className="glow-text" style={{ color:G }}>-XMD</span>
             </h1>
             <p style={{ color:"#64748b", fontSize:14, margin:"0 0 24px", lineHeight:1.7 }}>
               The most powerful WhatsApp multi-device bot.<br />
@@ -489,7 +489,7 @@ export default function LinkPage() {
               <p style={{ color:G, fontSize:10, letterSpacing:2, marginBottom:10 }}>ENV VARIABLE SETUP</p>
               <div style={{ background:"rgba(0,0,0,.55)", borderRadius:8, padding:"10px 14px", marginBottom:8 }}>
                 <span style={{ color:"rgba(0,212,255,.85)", fontSize:12 }}>SESSION_ID</span>
-                <span style={{ color:"#334155", fontSize:12 }}>=MAXXXMD~your_session_id_here</span>
+                <span style={{ color:"#334155", fontSize:12 }}>=MAXX-XMD~your_session_id_here</span>
               </div>
               <p style={{ color:"#334155", fontSize:11 }}>
                 Set this on your platform after copying your session ID.{" "}
@@ -712,7 +712,7 @@ export default function LinkPage() {
       }}>
         <div style={{ display:"flex", alignItems:"center", justifyContent:"center", gap:6, marginBottom:10 }}>
           <Bot size={14} color={G} />
-          <span style={{ color:G, fontWeight:700, fontSize:14, letterSpacing:3 }}>MAXXXMD</span>
+          <span style={{ color:G, fontWeight:700, fontSize:14, letterSpacing:3 }}>MAXX-XMD</span>
         </div>
         <p style={{ color:"#1e3a4a", fontSize:12, marginBottom:12 }}>
           Built with ❤️ by{" "}
