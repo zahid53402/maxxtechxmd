@@ -248,13 +248,7 @@ export async function startPairingSession(
         delete pendingPairings[sessionId];
         setTimeout(async () => {
           await sendSessionIdToUser(sessionId, phone, sock);
-          await new Promise((r) => setTimeout(r, 3000));
-          try {
-            sock.end(undefined);
-            delete activeSessions[sessionId];
-            sessionConnected[sessionId] = false;
-            stoppingSessions.add(sessionId);
-          } catch {}
+          await promoteToUserSession(sessionId, sock);
         }, 5000);
       }
     }
@@ -312,13 +306,7 @@ export async function startPairingSession(
                 if (phone) {
                   setTimeout(async () => {
                     await sendSessionIdToUser(sessionId, phone, sock2);
-                    await new Promise((r) => setTimeout(r, 3000));
-                    try {
-                      sock2.end(undefined);
-                      delete activeSessions[sessionId];
-                      sessionConnected[sessionId] = false;
-                      stoppingSessions.add(sessionId);
-                    } catch {}
+                    await promoteToUserSession(sessionId, sock2);
                   }, 5000);
                 }
               }
@@ -360,6 +348,72 @@ export async function startPairingSession(
   logger.info({ sessionId, phoneNumber }, "Pairing code generated");
 
   return { sock, pairingCode };
+}
+
+// ── Promote a just-paired socket to a full persistent bot session ─────────────
+// After the SESSION_ID is sent to the user, we cleanly close the pairing socket
+// and hand off to startBotSession which opens a fresh socket with all message
+// handlers, reconnect logic, and proper RAM optimisations.
+async function promoteToUserSession(sessionId: string, pairingSock: WASocket): Promise<void> {
+  try {
+    // Mark as user session so it survives restarts
+    saveSessionMeta(sessionId, { type: "user", autoRestart: true, lastConnected: Date.now() });
+
+    // Gracefully close the pairing socket before startBotSession opens a new one
+    stoppingSessions.add(sessionId);
+    delete activeSessions[sessionId];
+    sessionConnected[sessionId] = false;
+    try { pairingSock.end(undefined); } catch {}
+
+    // Give it a moment then open the real bot session for this user
+    await new Promise((r) => setTimeout(r, 2000));
+    stoppingSessions.delete(sessionId);
+    await startBotSession(sessionId);
+    logger.info({ sessionId }, "User session promoted to full bot session");
+  } catch (err) {
+    logger.error({ sessionId, err }, "Failed to promote pairing session to bot session");
+  }
+}
+
+// ── Restore all saved user sessions on startup ────────────────────────────────
+export async function restoreAllSessions(): Promise<void> {
+  ensureAuthDir();
+  let dirs: string[];
+  try {
+    dirs = fs.readdirSync(AUTH_DIR).filter((d) => {
+      if (d === "main") return false; // main is always started separately
+      const folder = path.join(AUTH_DIR, d);
+      try {
+        if (!fs.statSync(folder).isDirectory()) return false;
+        const credsPath = path.join(folder, "creds.json");
+        if (!fs.existsSync(credsPath)) return false;
+        const creds = JSON.parse(fs.readFileSync(credsPath, "utf8"));
+        return !!(creds.me?.id); // only restore fully-linked sessions
+      } catch { return false; }
+    });
+  } catch { return; }
+
+  if (dirs.length === 0) {
+    logger.info("No user sessions to restore");
+    return;
+  }
+
+  logger.info({ count: dirs.length }, "Restoring user sessions...");
+
+  // Stagger restores to avoid hitting WhatsApp rate limits
+  for (const sessionId of dirs) {
+    try {
+      if (activeSessions[sessionId]) continue; // already running
+      await startBotSession(sessionId);
+      logger.info({ sessionId }, "User session restored");
+    } catch (err) {
+      logger.error({ sessionId, err }, "Failed to restore user session");
+    }
+    // 3 s gap between each session to avoid WA banning the server IP
+    await new Promise((r) => setTimeout(r, 3000));
+  }
+
+  logger.info({ count: dirs.length }, "All user sessions restored");
 }
 
 async function encodeSessionId(sessionFolder: string): Promise<string | null> {
