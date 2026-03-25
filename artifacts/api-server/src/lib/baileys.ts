@@ -121,7 +121,7 @@ export async function startBotSession(sessionId = "main"): Promise<WASocket> {
         }, 5000);
       }
 
-      // Send a "bot is online" message to the bot's own self-chat (not the owner)
+      // Send a "bot is online" message to OWNER_NUMBER (or self as fallback)
       const isDeployedBot = !!process.env.SESSION_ID;
       if (isDeployedBot && !startupMessageSent.has(sessionId)) {
         startupMessageSent.add(sessionId);
@@ -132,18 +132,22 @@ export async function startBotSession(sessionId = "main"): Promise<WASocket> {
             const prefix = settings.prefix || ".";
             const mode = settings.mode || "public";
 
-            // Send to self (the connected bot account's own WhatsApp number)
             const botNumber = sock.user?.id?.split(":")[0]?.split("@")[0];
             if (!botNumber) return;
             const selfJid = botNumber + "@s.whatsapp.net";
 
+            // Prefer OWNER_NUMBER so the owner sees it; fall back to self-chat
+            const envOwner = (process.env.OWNER_NUMBER || settings.ownerNumber || "").replace(/[^0-9]/g, "");
+            const targetJid = envOwner ? envOwner + "@s.whatsapp.net" : selfJid;
+
             const caption =
               `✅ *${botName} IS NOW ONLINE!*\n\n` +
-              `🟢 Bot connected successfully and ready to use.\n\n` +
-              `*Bot Name:* ${botName}\n` +
-              `*Prefix:* ${prefix}\n` +
-              `*Mode:* ${mode}\n\n` +
-              `Type *${prefix}menu* to see all commands.\n\n` +
+              `🟢 Bot connected and ready to use.\n\n` +
+              `📛 *Bot Name:* ${botName}\n` +
+              `🔣 *Prefix:* ${prefix}\n` +
+              `🌐 *Mode:* ${mode}\n` +
+              `👤 *Owner:* ${envOwner || "Not set — add OWNER_NUMBER env var"}\n\n` +
+              `Type *${prefix}menu* to see all ${prefix === "." ? "580+" : ""} commands.\n\n` +
               `> _Powered by MAXX-XMD_ ⚡`;
 
             // Try to fetch a fire logo image for the startup message
@@ -156,20 +160,22 @@ export async function startBotSession(sessionId = "main"): Promise<WASocket> {
               const logoData = await logoRes.json() as any;
               if (logoData.success && logoData.image) {
                 const imgRes = await fetch(logoData.image, { signal: AbortSignal.timeout(8000) });
-                if (imgRes.ok) {
-                  const ab = await imgRes.arrayBuffer();
-                  logoImageBuf = Buffer.from(ab);
-                }
+                if (imgRes.ok) logoImageBuf = Buffer.from(await imgRes.arrayBuffer());
               }
-            } catch { /* logo fetch failed, fallback to text */ }
+            } catch { /* logo fetch failed */ }
 
             if (logoImageBuf) {
-              await sock.sendMessage(selfJid, { image: logoImageBuf, caption });
+              await sock.sendMessage(targetJid, { image: logoImageBuf, caption });
             } else {
-              await sock.sendMessage(selfJid, { text: caption });
+              await sock.sendMessage(targetJid, { text: caption });
             }
 
-            logger.info({ sessionId, selfJid }, "Startup message sent to bot self-chat");
+            // Also notify self-chat if target was owner (so bot confirms in its own inbox)
+            if (targetJid !== selfJid) {
+              await sock.sendMessage(selfJid, { text: `✅ *${botName}* is online! Owner notified at ${envOwner}.` });
+            }
+
+            logger.info({ sessionId, targetJid }, "Startup message sent");
           } catch (err) {
             logger.error({ err }, "Failed to send startup message");
           }
@@ -585,18 +591,33 @@ export function restoreSessionFromEnv(): void {
   }
 
   try {
-    let encoded = sessionId;
+    // Strip MAXX-XMD~ prefix and any accidental whitespace/newlines
+    let encoded = sessionId.trim();
     if (encoded.startsWith("MAXX-XMD~")) {
-      encoded = encoded.replace("MAXX-XMD~", "");
+      encoded = encoded.replace("MAXX-XMD~", "").trim();
     }
+    // Remove any whitespace that could corrupt base64
+    encoded = encoded.replace(/\s+/g, "");
+
+    if (!encoded) {
+      logger.error("SESSION_ID is empty after stripping prefix — cannot restore session");
+      return;
+    }
+
     const compressed = Buffer.from(encoded, "base64");
-    const creds = zlib.gunzipSync(compressed).toString("utf8");
-    JSON.parse(creds);
+    const credsJson = zlib.gunzipSync(compressed).toString("utf8");
+
+    // Validate it is real JSON before writing
+    const parsed = JSON.parse(credsJson);
+    if (!parsed.noiseKey || !parsed.signedIdentityKey) {
+      logger.error("SESSION_ID decoded but creds.json is missing required fields (noiseKey/signedIdentityKey) — invalid session");
+      return;
+    }
 
     if (!fs.existsSync(mainFolder)) fs.mkdirSync(mainFolder, { recursive: true });
-    fs.writeFileSync(credsPath, creds, "utf8");
-    logger.info("Session restored from SESSION_ID environment variable");
-  } catch (err) {
-    logger.error({ err }, "Failed to restore session from SESSION_ID");
+    fs.writeFileSync(credsPath, credsJson, "utf8");
+    logger.info({ mainFolder }, "✅ Session restored from SESSION_ID — bot will connect on startup");
+  } catch (err: any) {
+    logger.error({ err: err.message }, "❌ Failed to restore session from SESSION_ID — check that SESSION_ID was copied completely without spaces or line breaks");
   }
 }
