@@ -336,11 +336,7 @@ registerCommand({
       }
 
       text +=
-        `╔══════════════════════════╗\n` +
-        `║  📢 *FOLLOW OUR CHANNEL* ║\n` +
-        `╚══════════════════════════╝\n` +
-        `👉 https://whatsapp.com/channel/0029Vb6XNTjAInPblhlwnm2J\n` +
-        `💡 _Tap the link to follow & get updates, tips and tricks!_\n\n` +
+        `📢 *View Channel:* https://whatsapp.com/channel/0029Vb6XNTjAInPblhlwnm2J\n\n` +
         `> _Powered by ${botName}_ ⚡`;
 
       const MENU_IMAGES = [
