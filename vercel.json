@@ -1,6 +1,6 @@
 {
-  "installCommand": "pnpm install",
-  "buildCommand": "pnpm --filter @workspace/maxx-xmd run build",
+  "installCommand": "echo 'Using pre-built dist'",
+  "buildCommand": "echo 'Using pre-built dist'",
   "outputDirectory": "artifacts/maxx-xmd/dist/public",
   "rewrites": [
     { "source": "/(.*)", "destination": "/index.html" }
