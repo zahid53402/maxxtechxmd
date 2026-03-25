@@ -158,7 +158,7 @@ export default function Settings() {
           <div className="fixed bottom-0 left-0 md:left-64 right-0 p-4 bg-background/80 backdrop-blur-lg border-t border-primary/20 z-40 flex justify-end">
             <Button 
               type="submit" 
-              className="cyber-button font-mono h-12 px-8 bg-primary text-primary-foreground shadow-[0_0_20px_rgba(16,185,129,0.4)]"
+              className="cyber-button font-mono h-12 px-8 bg-primary text-primary-foreground shadow-[0_0_20px_rgba(0,200,255,0.4)]"
               disabled={updateMut.isPending}
             >
               <Save className="w-5 h-5 mr-2" />
