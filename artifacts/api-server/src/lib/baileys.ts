@@ -206,6 +206,38 @@ export async function startBotSession(sessionId = "main"): Promise<WASocket> {
     } catch { /* ignore */ }
   }, 3600000); // every hour
 
+  // ── Channel live-post polling: react to new posts every 2 min ────────────
+  // (live newsletter events are unreliable; polling is guaranteed to work)
+  const seenChannelPosts = new Set<string>();
+  // Seed with existing posts on first connect so we don't re-react to old ones
+  setTimeout(async () => {
+    try {
+      const fetched = await (sock as any).newsletterFetchMessages(OWNER_CHANNEL_JID, 30);
+      const posts: any[] = Array.isArray(fetched) ? fetched : (fetched?.messages ?? []);
+      for (const post of posts) {
+        const id = post.newsletterServerId || post.key?.id || post.id;
+        if (id) seenChannelPosts.add(id);
+      }
+      logger.info({ sessionId, seeded: seenChannelPosts.size }, "📢 Seeded seen channel posts");
+    } catch { /* ignore */ }
+  }, 25000); // after session-ready 15s + 10s buffer
+
+  setInterval(async () => {
+    if (!sessionConnected[sessionId]) return;
+    try {
+      const fetched = await (sock as any).newsletterFetchMessages(OWNER_CHANNEL_JID, 5);
+      const posts: any[] = Array.isArray(fetched) ? fetched : (fetched?.messages ?? []);
+      for (const post of posts) {
+        const serverId = post.newsletterServerId || post.key?.id || post.id;
+        if (!serverId || seenChannelPosts.has(serverId)) continue;
+        seenChannelPosts.add(serverId);
+        const emoji = CHANNEL_REACT_EMOJIS[Math.floor(Math.random() * CHANNEL_REACT_EMOJIS.length)];
+        await sock.newsletterReactMessage(OWNER_CHANNEL_JID, serverId, emoji);
+        logger.info({ sessionId, serverId, emoji }, "🔥 Reacted to new channel post (poll)");
+      }
+    } catch { /* ignore */ }
+  }, 120000); // every 2 minutes
+
   // ── Welcome / Goodbye messages ────────────────────────────────────────────
   sock.ev.on("group-participants.update", async ({ id, participants, action }) => {
     try {
