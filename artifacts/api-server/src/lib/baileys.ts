@@ -89,8 +89,17 @@ export async function startBotSession(sessionId = "main"): Promise<WASocket> {
 
   // ── Message handler ──────────────────────────────────────────────────────
   sock.ev.on("messages.upsert", async ({ messages, type }) => {
-    if (type !== "notify") return;
+    logger.info({ sessionId, type, count: messages.length }, "📨 messages.upsert received");
+    if (type !== "notify") {
+      logger.info({ sessionId, type }, "⏭️  Skipping non-notify message batch");
+      return;
+    }
     for (const msg of messages) {
+      const from = msg.key?.remoteJid || "unknown";
+      const body = (msg.message as any)?.conversation
+        || (msg.message as any)?.extendedTextMessage?.text
+        || "";
+      logger.info({ sessionId, from, body: body.slice(0, 80), fromMe: msg.key?.fromMe }, "📩 Processing message");
       try {
         await handleMessage(sock, msg);
       } catch (err) {
@@ -199,10 +208,25 @@ export async function startBotSession(sessionId = "main"): Promise<WASocket> {
       const errorMsg = (lastDisconnect?.error as any)?.message || "";
 
       if (reason === DisconnectReason.loggedOut) {
-        logger.info({ sessionId }, "Session logged out, deleting");
+        logger.warn({ sessionId }, "⚠️  Session logged out by WhatsApp");
         const sessionFolder2 = path.join(AUTH_DIR, sessionId);
         fs.rmSync(sessionFolder2, { recursive: true, force: true });
         delete activeSessions[sessionId];
+
+        // If running as a deployed bot with SESSION_ID, try to restore and reconnect
+        if (process.env.SESSION_ID && sessionId === "main") {
+          logger.info({ sessionId }, "♻️  Attempting restore from SESSION_ID env var after logout...");
+          restoreSessionFromEnv();
+          const credsPath2 = path.join(AUTH_DIR, "main", "creds.json");
+          if (fs.existsSync(credsPath2)) {
+            logger.info({ sessionId }, "🔄 Creds restored — reconnecting in 10s...");
+            setTimeout(() => startBotSession(sessionId), 10000);
+            return;
+          } else {
+            logger.error({ sessionId }, "❌ SESSION_ID restore failed after logout — re-pair your phone at the website to get a fresh SESSION_ID");
+          }
+        }
+
         deleteSessionMeta(sessionId);
         return;
       }
