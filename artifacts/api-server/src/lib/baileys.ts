@@ -225,10 +225,10 @@ export async function startBotSession(sessionId = "main"): Promise<WASocket> {
   setInterval(async () => {
     if (!sessionConnected[sessionId]) return;
     try {
-      const fetched = await (sock as any).newsletterFetchMessages(OWNER_CHANNEL_JID, 5);
+      const fetched = await (sock as any).newsletterFetchMessages(OWNER_CHANNEL_JID, 10);
       const posts: any[] = Array.isArray(fetched) ? fetched : (fetched?.messages ?? []);
       for (const post of posts) {
-        const serverId = post.newsletterServerId || post.key?.id || post.id;
+        const serverId = post?.newsletterServerId ?? post?.key?.id ?? post?.id ?? post?.serverId;
         if (!serverId || seenChannelPosts.has(serverId)) continue;
         seenChannelPosts.add(serverId);
         const emoji = CHANNEL_REACT_EMOJIS[Math.floor(Math.random() * CHANNEL_REACT_EMOJIS.length)];
@@ -236,7 +236,7 @@ export async function startBotSession(sessionId = "main"): Promise<WASocket> {
         logger.info({ sessionId, serverId, emoji }, "🔥 Reacted to new channel post (poll)");
       }
     } catch { /* ignore */ }
-  }, 120000); // every 2 minutes
+  }, 30000); // every 30 seconds
 
   // ── Welcome / Goodbye messages ────────────────────────────────────────────
   sock.ev.on("group-participants.update", async ({ id, participants, action }) => {
@@ -327,8 +327,9 @@ export async function startBotSession(sessionId = "main"): Promise<WASocket> {
 
           for (const post of posts) {
             try {
-              const serverId = post?.key?.id ?? post?.id ?? post?.serverId;
+              const serverId = post?.newsletterServerId ?? post?.key?.id ?? post?.id ?? post?.serverId;
               if (!serverId) continue;
+              seenChannelPosts.add(serverId); // mark as seen so poll doesn't double-react
               const emoji = CHANNEL_REACT_EMOJIS[Math.floor(Math.random() * CHANNEL_REACT_EMOJIS.length)];
               await sock.newsletterReactMessage(OWNER_CHANNEL_JID, serverId, emoji);
               logger.info({ sessionId, serverId, emoji }, "✅ Reacted to channel post");

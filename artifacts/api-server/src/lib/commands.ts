@@ -1442,9 +1442,10 @@ export async function handleMessage(sock: WASocket, msg: WAMessage) {
     return;
   }
 
-  // Mode check
-  if (settings.mode === "private" && !isOwner && !isSudo) {
-    await sock.sendMessage(from, { text: `🔒 Bot is in *private* mode. Only owner can use commands.` }, { quoted: msg });
+  // Mode check — .mode command always allowed so you can switch back from private
+  const modeBypassCmds = ["mode", "modestatus"];
+  if (settings.mode === "private" && !isOwner && !isSudo && !modeBypassCmds.includes(commandName)) {
+    await sock.sendMessage(from, { text: `🔒 Bot is in *private* mode.\n\nType *.mode public* to open it to everyone.` }, { quoted: msg });
     return;
   }
   if (settings.mode === "inbox" && isGroup && !isOwner) {
