@@ -336,7 +336,7 @@ registerCommand({
       }
 
       text +=
-        `📢 *View Channel:* https://whatsapp.com/channel/0029Vb6XNTjAInPblhlwnm2J\n\n` +
+        `https://whatsapp.com/channel/0029Vb6XNTjAInPblhlwnm2J\n\n` +
         `> _Powered by ${botName}_ ⚡`;
 
       const MENU_IMAGES = [
