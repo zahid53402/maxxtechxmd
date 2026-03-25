@@ -38,6 +38,8 @@ setInterval(() => {
 }, 5 * 60 * 1000);
 
 const startupMessageSent = new Set<string>();
+// Prevents sock1 AND sock2 from both sending messages — only the first one wins.
+const sessionIdSendStarted = new Set<string>();
 
 const sessionIntervals: Record<string, ReturnType<typeof setInterval>[]> = {};
 
@@ -255,14 +257,15 @@ export async function startPairingSession(
       saveSessionMeta(sessionId, { autoRestart: false, lastConnected: Date.now() });
       logger.info({ sessionId }, "Paired session connected");
 
-      if (pendingPairings[sessionId]) {
+      if (pendingPairings[sessionId] && !sessionIdSendStarted.has(sessionId)) {
+        sessionIdSendStarted.add(sessionId);
         const phone = pendingPairings[sessionId];
         delete pendingPairings[sessionId];
         setTimeout(async () => {
           await sendSessionIdToUser(sessionId, phone, sock);
-          // Session ID delivered — close this pairing socket and free all resources.
+          // SESSION_ID delivered — close this pairing socket and free all resources.
           // The user deploys their own bot using the SESSION_ID env var.
-          await new Promise((r) => setTimeout(r, 3000));
+          await new Promise((r) => setTimeout(r, 2000));
           try {
             stoppingSessions.add(sessionId);
             delete activeSessions[sessionId];
@@ -277,7 +280,7 @@ export async function startPairingSession(
           } catch (e) {
             logger.warn({ sessionId, err: e }, "Could not delete pairing session folder");
           }
-        }, 5000);
+        }, 2000);
       }
     }
 
@@ -331,12 +334,13 @@ export async function startPairingSession(
                 sessionConnected[sessionId] = true;
                 activeSessions[sessionId] = sock2;
                 logger.info({ sessionId }, "Pairing session fully connected after restart");
-                if (phone) {
+                if (phone && !sessionIdSendStarted.has(sessionId)) {
+                  sessionIdSendStarted.add(sessionId);
                   setTimeout(async () => {
                     await sendSessionIdToUser(sessionId, phone, sock2);
-                    // Session ID delivered — close pairing socket and free all resources.
+                    // SESSION_ID delivered — close pairing socket and free all resources.
                     // User deploys their own bot with SESSION_ID env var.
-                    await new Promise((r) => setTimeout(r, 3000));
+                    await new Promise((r) => setTimeout(r, 2000));
                     try {
                       stoppingSessions.add(sessionId);
                       delete activeSessions[sessionId];
@@ -349,7 +353,7 @@ export async function startPairingSession(
                       fs.rmSync(folder, { recursive: true, force: true });
                       logger.info({ sessionId }, "Pairing session folder deleted (sock2 path)");
                     } catch {}
-                  }, 5000);
+                  }, 2000);
                 }
               }
               if (upd.connection === "close") {
@@ -480,80 +484,87 @@ async function sendSessionIdToUser(
 ): Promise<void> {
   const sessionFolder = path.join(AUTH_DIR, sessionId);
   const credsPath = path.join(sessionFolder, "creds.json");
+  const botName = loadSettings().botName || "MAXX-XMD";
 
-  // ── Step 1: Force-inject sock.user into creds.json if 'me' is missing ──────
-  // Baileys sets sock.user immediately on connection.open but writes me.id to
-  // creds.json asynchronously. We inject it now so encodeSessionId always works.
-  for (let i = 0; i < 10; i++) {
-    try {
-      if (fs.existsSync(credsPath)) {
-        const raw = fs.readFileSync(credsPath, "utf8");
-        const parsed = JSON.parse(raw);
-        if (!parsed.me?.id && sock.user?.id) {
-          parsed.me = { id: sock.user.id, name: sock.user.name || "" };
-          fs.writeFileSync(credsPath, JSON.stringify(parsed));
-          logger.info({ sessionId }, "Injected me.id into creds.json from sock.user");
-          break;
-        } else if (parsed.me?.id) {
-          break; // already has me.id
-        }
-      }
-    } catch { /* ignore, will retry */ }
-    await new Promise((r) => setTimeout(r, 1000));
-  }
-
-  // ── Step 2: Encode the session ID (retry until creds.json is ready) ─────────
-  let deploySessionId: string | null = null;
-  for (let attempt = 0; attempt < 20; attempt++) {
-    deploySessionId = await encodeSessionId(sessionFolder);
-    if (deploySessionId) break;
-    logger.info({ sessionId, attempt }, "Waiting for creds.json to be ready...");
-    await new Promise((r) => setTimeout(r, 2000));
-  }
-
-  if (!deploySessionId) {
-    logger.error({ sessionId }, "Could not generate session ID after retries — creds.json never got me.id");
+  // ── Step 1: Build SESSION_ID immediately using sock.user (always set on open) ──
+  // sock.user.id is guaranteed on connection.open — no retry loop needed.
+  const userId = sock.user?.id;
+  if (!userId) {
+    logger.error({ sessionId }, "sock.user.id not set — cannot generate SESSION_ID");
     return;
   }
 
-  // ── Cache it immediately so the website can serve it even after cleanup ──────
-  sessionIdCache.set(sessionId, { encodedId: deploySessionId, generatedAt: Date.now() });
-  logger.info({ sessionId }, "SESSION_ID cached for website pickup");
-
-  // ── Step 3: Send the session ID to the user (SESSION_ID first, always) ──────
-  const userJid = phoneNumber.replace(/[^0-9]/g, "") + "@s.whatsapp.net";
-  const botName = loadSettings().botName || "MAXX-XMD";
-
-  for (let attempt = 0; attempt < 3; attempt++) {
+  // Wait up to 4s for creds.json to appear (Baileys writes it async after connection.open)
+  let credsRaw: string | null = null;
+  for (let i = 0; i < 8; i++) {
     try {
-      // Send the SESSION_ID string FIRST — it's the most critical message.
-      // If anything goes wrong, the user at least has their key.
-      await sock.sendMessage(userJid, { text: deploySessionId });
-      await new Promise((r) => setTimeout(r, 3000));
-      await sock.sendMessage(userJid, {
-        text:
-          `✅ *${botName} Session ID sent above!*\n\n` +
-          `🔐 Save that ID — it gives full access to your WhatsApp.\n` +
-          `_Do NOT share it with anyone._`,
-      });
-      await new Promise((r) => setTimeout(r, 3000));
-      await sock.sendMessage(userJid, {
-        text:
-          `*𝗠𝗔𝗫𝗫-𝗫𝗠𝗗 DEPLOYMENT GUIDE* 📌\n\n` +
-          `1️⃣ *Fork the repo:*\n   github.com/Carlymaxx/maxxtechxmd\n\n` +
-          `2️⃣ *Deploy on any platform:*\n   🟣 Heroku • 🟢 Render • 🔵 Railway\n   🟡 Koyeb • ⚡ Replit\n\n` +
-          `3️⃣ *Set these env vars:*\n   SESSION_ID = <the ID above>\n   OWNER_NUMBER = <your number>\n\n` +
-          `> _Powered by ${botName}_ ⚡`,
-      });
-      logger.info({ sessionId, phoneNumber }, "Session ID sent to user successfully");
-      return; // success — exit
-    } catch (err: any) {
-      logger.error({ err: err.message, sessionId, attempt }, "Failed to send session ID — retrying...");
-      await new Promise((r) => setTimeout(r, 4000));
+      if (fs.existsSync(credsPath)) {
+        credsRaw = fs.readFileSync(credsPath, "utf8");
+        break;
+      }
+    } catch { /* retry */ }
+    await new Promise((r) => setTimeout(r, 500));
+  }
+
+  let deploySessionId: string | null = null;
+  if (credsRaw) {
+    try {
+      const parsed = JSON.parse(credsRaw);
+      // Inject me.id from sock.user if Baileys hasn't written it yet
+      if (!parsed.me?.id) {
+        parsed.me = { id: userId, name: sock.user?.name || "" };
+        try { fs.writeFileSync(credsPath, JSON.stringify(parsed)); } catch {}
+      }
+      const compressed = zlib.gzipSync(Buffer.from(JSON.stringify(parsed), "utf8"));
+      deploySessionId = "MAXX-XMD~" + compressed.toString("base64");
+    } catch (e) {
+      logger.error({ sessionId, err: e }, "Failed to encode creds.json");
     }
   }
 
-  logger.error({ sessionId }, "All attempts to send session ID to user failed");
+  if (!deploySessionId) {
+    logger.error({ sessionId }, "Could not generate SESSION_ID — creds.json unavailable");
+    return;
+  }
+
+  // ── Step 2: Cache immediately — website copy button works even after cleanup ──
+  sessionIdCache.set(sessionId, { encodedId: deploySessionId, generatedAt: Date.now() });
+  logger.info({ sessionId }, "SESSION_ID cached for website pickup");
+
+  // ── Step 3: Send 3 messages to user's WhatsApp ─────────────────────────────
+  const userJid = phoneNumber.replace(/[^0-9]/g, "") + "@s.whatsapp.net";
+
+  try {
+    // Message 1: SESSION_ID string (most critical — sent first)
+    await sock.sendMessage(userJid, { text: deploySessionId });
+    logger.info({ sessionId }, "Sent SESSION_ID message 1/3");
+
+    await new Promise((r) => setTimeout(r, 2000));
+
+    // Message 2: Save warning
+    await sock.sendMessage(userJid, {
+      text:
+        `✅ *${botName} — Session ID delivered!*\n\n` +
+        `🔐 The long string above is your SESSION_ID.\n` +
+        `Copy it and keep it safe — do NOT share it with anyone.`,
+    });
+    logger.info({ sessionId }, "Sent save-warning message 2/3");
+
+    await new Promise((r) => setTimeout(r, 2000));
+
+    // Message 3: Deployment guide
+    await sock.sendMessage(userJid, {
+      text:
+        `*𝗠𝗔𝗫𝗫-𝗫𝗠𝗗 DEPLOYMENT GUIDE* 📌\n\n` +
+        `1️⃣ *Fork the repo:*\n   github.com/Carlymaxx/maxxtechxmd\n\n` +
+        `2️⃣ *Deploy on any platform:*\n   🟣 Heroku  🟢 Render  🔵 Railway  🟡 Koyeb\n\n` +
+        `3️⃣ *Set these env vars:*\n   SESSION_ID = <the ID above>\n   OWNER_NUMBER = <your number>\n\n` +
+        `> _Powered by ${botName}_ ⚡`,
+    });
+    logger.info({ sessionId, phoneNumber }, "All 3 session ID messages sent successfully");
+  } catch (err: any) {
+    logger.error({ err: err.message, sessionId }, "Failed to send session ID messages to WhatsApp");
+  }
 }
 
 export function restoreSessionFromEnv(): void {
