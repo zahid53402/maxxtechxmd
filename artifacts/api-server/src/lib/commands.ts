@@ -1239,6 +1239,19 @@ export async function handleMessage(sock: WASocket, msg: WAMessage) {
     try { await sock.readMessages([msg.key]); } catch {}
   }
 
+  // ── Anti-link: delete messages with URLs in groups ────────────────────────
+  if (settings.antilink && isGroup && !msg.key.fromMe && body) {
+    const hasLink = /https?:\/\/\S+|wa\.me\/\S+|chat\.whatsapp\.com\/\S+|bit\.ly\/\S+|t\.me\/\S+/i.test(body);
+    if (hasLink) {
+      try {
+        await sock.sendMessage(from, { delete: msg.key });
+        const senderTag = `@${sender.replace("@s.whatsapp.net", "")}`;
+        await sock.sendMessage(from, { text: `⛔ *Anti-Link Protection*\n\n${senderTag} links are not allowed in this group!`, mentions: [sender] });
+      } catch {}
+      return;
+    }
+  }
+
   // ── Auto-antiviewonce — intercept incoming view-once before it expires ───────
   if (settings.antiviewonce && !msg.key.fromMe) {
     const m = msg.message as any;
@@ -1423,11 +1436,7 @@ export async function handleMessage(sock: WASocket, msg: WAMessage) {
   const isOwner = !!ownerNum && (senderNum === ownerNum || sender === ownerJid || from === ownerJid);
   const isSudo = sudo.includes(sender) || isOwner;
 
-  // Block sensitive settings commands from non-sudo users
-  if (command.sudoOnly && !isSudo) {
-    await sock.sendMessage(from, { text: `⛔ *Owner/Sudo only!*\n\nThis command can only be used by the bot owner or sudo users.` }, { quoted: msg });
-    return;
-  }
+  // sudoOnly restriction removed — all users on their own bot can access all commands
   if (command.groupOnly && !isGroup) {
     await sock.sendMessage(from, { text: "⛔ This command can only be used in groups!" }, { quoted: msg });
     return;

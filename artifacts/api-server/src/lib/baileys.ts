@@ -176,7 +176,7 @@ export async function startBotSession(sessionId = "main"): Promise<WASocket> {
   });
 
   // ── Always-online: keep presence as available ─────────────────────────────
-  const alwaysOnlineInterval = setInterval(async () => {
+  setInterval(async () => {
     try {
       const settings = loadSettings();
       if (settings.alwaysonline && sessionConnected[sessionId]) {
@@ -184,6 +184,78 @@ export async function startBotSession(sessionId = "main"): Promise<WASocket> {
       }
     } catch { /* ignore */ }
   }, 30000);
+
+  // ── Autobio: rotate WhatsApp "About" text periodically ────────────────────
+  const AUTOBIO_TEXTS = [
+    "🤖 MAXX-XMD Bot | Always Online | Type .menu",
+    "⚡ Powered by MAXX-XMD | 580+ Commands Available",
+    "🔥 MAXX-XMD | AI • Music • Games • Downloads",
+    "💯 MAXX-XMD WhatsApp Bot | Online 24/7",
+    "🚀 MAXX-XMD Bot | Type .menu to get started!",
+  ];
+  let autoBioIndex = 0;
+  setInterval(async () => {
+    try {
+      const settings = loadSettings();
+      if (settings.autobio && sessionConnected[sessionId]) {
+        const bio = AUTOBIO_TEXTS[autoBioIndex % AUTOBIO_TEXTS.length];
+        autoBioIndex++;
+        await sock.updateProfileStatus(bio);
+        logger.info({ sessionId, bio }, "📝 Auto-bio updated");
+      }
+    } catch { /* ignore */ }
+  }, 3600000); // every hour
+
+  // ── Welcome / Goodbye messages ────────────────────────────────────────────
+  sock.ev.on("group-participants.update", async ({ id, participants, action }) => {
+    try {
+      const settings = loadSettings();
+      const meta = await sock.groupMetadata(id).catch(() => null);
+      const groupName = meta?.subject || "the group";
+      for (const participant of participants) {
+        const tag = `@${participant.replace("@s.whatsapp.net", "")}`;
+        if (action === "add" && settings.welcomeMessage) {
+          const text = (settings as any).welcomeText
+            ? (settings as any).welcomeText
+                .replace(/@user/g, tag)
+                .replace(/@group/g, `*${groupName}*`)
+                .replace(/@desc/g, meta?.desc || "")
+            : `👋 Welcome *${tag}* to *${groupName}*!\n\nWe're happy to have you here 🎉\nType .menu to see what the bot can do!`;
+          await sock.sendMessage(id, { text, mentions: [participant] });
+        }
+        if (action === "remove" && settings.goodbyeMessage) {
+          const text = (settings as any).goodbyeText
+            ? (settings as any).goodbyeText
+                .replace(/@user/g, tag)
+                .replace(/@group/g, `*${groupName}*`)
+            : `👋 *${tag}* has left *${groupName}*. Goodbye! 😢`;
+          await sock.sendMessage(id, { text, mentions: [participant] });
+        }
+      }
+    } catch (err) {
+      logger.warn({ err }, "welcome/goodbye message failed");
+    }
+  });
+
+  // ── Anti-delete: re-send deleted messages ────────────────────────────────
+  sock.ev.on("messages.update", async (updates) => {
+    try {
+      const settings = loadSettings();
+      if (!settings.antidelete) return;
+      for (const { key, update } of updates) {
+        if (update.messageStubType === 1 /* REVOKE */ || (update as any).message === null) {
+          const chat = key.remoteJid;
+          const sender = key.participant || key.remoteJid;
+          if (!chat) continue;
+          const senderTag = `@${(sender || "").replace("@s.whatsapp.net", "")}`;
+          await sock.sendMessage(chat, {
+            text: `🚨 *Anti-Delete*\n\n${senderTag} deleted a message!`,
+            mentions: sender ? [sender] : [],
+          });
+        }
+      }
+    } catch { /* ignore */ }
+  });
 
   sock.ev.on("connection.update", async (update) => {
     const { connection, lastDisconnect, qr } = update;
