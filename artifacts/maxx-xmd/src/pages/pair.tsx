@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect, useRef } from "react";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
@@ -10,8 +10,22 @@ import { useToast } from "@/hooks/use-toast";
 import { motion, AnimatePresence } from "framer-motion";
 import {
   Smartphone, Copy, CheckCircle2, ShieldCheck, AlertCircle,
-  Zap, Server, Globe, ChevronRight, Terminal, ArrowRight,
+  Zap, Server, Globe, ChevronRight, Terminal, ArrowRight, Timer,
 } from "lucide-react";
+
+function useCountdown(startFrom: number, active: boolean) {
+  const [seconds, setSeconds] = useState(startFrom);
+  const ref = useRef<ReturnType<typeof setInterval> | null>(null);
+  useEffect(() => {
+    setSeconds(startFrom);
+    if (!active) return;
+    ref.current = setInterval(() => {
+      setSeconds((s) => (s > 0 ? s - 1 : 0));
+    }, 1000);
+    return () => { if (ref.current) clearInterval(ref.current); };
+  }, [active, startFrom]);
+  return seconds;
+}
 
 const formSchema = z.object({
   number: z
@@ -142,6 +156,11 @@ export default function Pair() {
 
   const isConnected = !!status?.connected;
   const codeDigits = pairingCode ? pairingCode.replace(/-/g, "").split("") : [];
+
+  const codeSeconds = useCountdown(60, !!pairingCode && !isConnected);
+  const sessionSeconds = useCountdown(20, isConnected && !status?.deploySessionId);
+  const codeExpired = codeSeconds === 0;
+  const codeProgress = codeSeconds / 60;
 
   return (
     <div className="max-w-5xl mx-auto space-y-10 pb-16">
@@ -372,21 +391,46 @@ export default function Pair() {
                     </p>
                   </div>
 
-                  {/* Code digits display */}
-                  <div className="space-y-3">
-                    <p className="font-mono text-xs text-muted-foreground uppercase tracking-widest">Your Pairing Code</p>
-                    <div className="flex gap-2 justify-center flex-wrap">
-                      {codeDigits.map((digit, i) => (
-                        <motion.div
-                          key={i}
-                          initial={{ y: 20, opacity: 0 }}
-                          animate={{ y: 0, opacity: 1 }}
-                          transition={{ delay: i * 0.06 }}
-                          className="w-11 h-14 bg-black/80 border-2 border-primary/50 rounded-xl flex items-center justify-center font-mono text-2xl font-bold text-white shadow-[0_0_15px_rgba(16,185,129,0.15)]"
-                        >
-                          {digit}
-                        </motion.div>
-                      ))}
+                  {/* Countdown ring + digits */}
+                  <div className="flex items-center justify-center gap-6">
+                    {/* SVG countdown ring */}
+                    <div className="relative w-20 h-20 flex-shrink-0">
+                      <svg className="w-20 h-20 -rotate-90" viewBox="0 0 80 80">
+                        <circle cx="40" cy="40" r="34" fill="none" stroke="rgba(16,185,129,0.1)" strokeWidth="6" />
+                        <circle
+                          cx="40" cy="40" r="34" fill="none"
+                          stroke={codeExpired ? "#ef4444" : codeSeconds <= 10 ? "#f59e0b" : "#10b981"}
+                          strokeWidth="6"
+                          strokeDasharray={`${2 * Math.PI * 34}`}
+                          strokeDashoffset={`${2 * Math.PI * 34 * (1 - codeProgress)}`}
+                          strokeLinecap="round"
+                          style={{ transition: "stroke-dashoffset 1s linear, stroke 0.3s" }}
+                        />
+                      </svg>
+                      <div className="absolute inset-0 flex flex-col items-center justify-center">
+                        <span className={`font-mono text-xl font-bold leading-none ${codeExpired ? "text-red-400" : codeSeconds <= 10 ? "text-yellow-400" : "text-primary"}`}>
+                          {codeSeconds}
+                        </span>
+                        <span className="font-mono text-[9px] text-muted-foreground">SEC</span>
+                      </div>
+                    </div>
+
+                    {/* Code digits */}
+                    <div className="space-y-2">
+                      <p className="font-mono text-[10px] text-muted-foreground uppercase tracking-widest">Pairing Code</p>
+                      <div className="flex gap-1.5 justify-center flex-wrap">
+                        {codeDigits.map((digit, i) => (
+                          <motion.div
+                            key={i}
+                            initial={{ y: 20, opacity: 0 }}
+                            animate={{ y: 0, opacity: 1 }}
+                            transition={{ delay: i * 0.06 }}
+                            className={`w-10 h-12 bg-black/80 border-2 rounded-xl flex items-center justify-center font-mono text-xl font-bold text-white shadow-[0_0_15px_rgba(16,185,129,0.15)] ${codeExpired ? "border-red-500/50" : "border-primary/50"}`}
+                          >
+                            {digit}
+                          </motion.div>
+                        ))}
+                      </div>
                     </div>
                   </div>
 
@@ -401,10 +445,19 @@ export default function Pair() {
                     )}
                   </button>
 
-                  <div className="bg-yellow-500/5 border border-yellow-500/20 rounded-xl p-3 text-left space-y-1">
-                    <p className="font-mono text-xs text-yellow-400">⚠ Code expires in ~60 seconds</p>
-                    <p className="font-mono text-xs text-muted-foreground">After linking, your SESSION_ID will appear here and be sent to your WhatsApp.</p>
-                  </div>
+                  {codeExpired ? (
+                    <div className="bg-red-950/30 border border-red-500/30 rounded-xl p-3 text-center">
+                      <p className="font-mono text-xs text-red-400 font-bold">⛔ Code expired — click START OVER to get a new one</p>
+                    </div>
+                  ) : (
+                    <div className={`border rounded-xl p-3 text-left space-y-1 ${codeSeconds <= 10 ? "bg-red-950/20 border-red-500/20" : "bg-yellow-500/5 border-yellow-500/20"}`}>
+                      <p className={`font-mono text-xs font-bold ${codeSeconds <= 10 ? "text-red-400" : "text-yellow-400"}`}>
+                        <Timer className="w-3 h-3 inline mr-1" />
+                        {codeSeconds <= 10 ? `⚠ HURRY — ${codeSeconds}s left!` : `Code expires in ${codeSeconds}s`}
+                      </p>
+                      <p className="font-mono text-xs text-muted-foreground">After linking, your SESSION_ID will appear here and be sent to your WhatsApp.</p>
+                    </div>
+                  )}
                 </motion.div>
               )}
 
@@ -429,6 +482,36 @@ export default function Pair() {
                     <h3 className="text-2xl font-mono font-bold text-primary">LINKED!</h3>
                     <p className="text-xs font-mono text-muted-foreground mt-1">Device paired successfully</p>
                   </div>
+
+                  {!status?.deploySessionId && (
+                    <div className="space-y-3 w-full">
+                      <div className="flex items-center justify-center gap-3">
+                        {/* Small spinner ring with seconds */}
+                        <div className="relative w-14 h-14 flex-shrink-0">
+                          <svg className="w-14 h-14 -rotate-90" viewBox="0 0 56 56">
+                            <circle cx="28" cy="28" r="22" fill="none" stroke="rgba(16,185,129,0.1)" strokeWidth="4" />
+                            <circle
+                              cx="28" cy="28" r="22" fill="none"
+                              stroke="#10b981"
+                              strokeWidth="4"
+                              strokeDasharray={`${2 * Math.PI * 22}`}
+                              strokeDashoffset={`${2 * Math.PI * 22 * (1 - sessionSeconds / 20)}`}
+                              strokeLinecap="round"
+                              style={{ transition: "stroke-dashoffset 1s linear" }}
+                            />
+                          </svg>
+                          <div className="absolute inset-0 flex flex-col items-center justify-center">
+                            <span className="font-mono text-sm font-bold text-primary leading-none">{sessionSeconds}</span>
+                            <span className="font-mono text-[8px] text-muted-foreground">SEC</span>
+                          </div>
+                        </div>
+                        <div className="text-left">
+                          <p className="text-sm font-mono text-primary animate-pulse font-bold">Sending to WhatsApp...</p>
+                          <p className="text-[11px] font-mono text-muted-foreground">Check your WhatsApp in a moment</p>
+                        </div>
+                      </div>
+                    </div>
+                  )}
 
                   {status?.deploySessionId ? (
                     <div className="space-y-3 w-full text-left">
