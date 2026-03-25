@@ -1,6 +1,7 @@
 import app from "./app.js";
 import { logger } from "./lib/logger.js";
 import { restoreSessionFromEnv, startBotSession } from "./lib/baileys.js";
+import { WORKSPACE_ROOT, AUTH_DIR } from "./lib/botState.js";
 import { getYtdlpBin } from "./lib/ytdlpUtil.js";
 
 const rawPort = process.env["PORT"];
@@ -24,6 +25,20 @@ app.listen(port, async (err?: Error) => {
   }
 
   logger.info({ port }, "Server listening");
+
+  // Startup diagnostics — visible in all platform logs (Heroku, Render, Railway, Koyeb)
+  logger.info({
+    WORKSPACE_ROOT,
+    AUTH_DIR,
+    cwd: process.cwd(),
+    SESSION_ID_SET: !!process.env.SESSION_ID,
+    OWNER_NUMBER_SET: !!process.env.OWNER_NUMBER,
+    platform: process.env.DYNO ? "heroku"
+      : process.env.RENDER ? "render"
+      : process.env.RAILWAY_ENVIRONMENT ? "railway"
+      : process.env.KOYEB_APP_NAME ? "koyeb"
+      : "unknown",
+  }, "🚀 MAXX-XMD startup diagnostics");
 
   restoreSessionFromEnv();
 

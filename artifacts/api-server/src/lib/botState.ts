@@ -1,15 +1,21 @@
 import fs from "fs";
 import path from "path";
 
-// On Heroku the Procfile runs `node artifacts/api-server/dist/index.mjs` from /app,
-// so process.cwd() === "/app" and going "../.." would reach the filesystem root.
-// On Replit dev, pnpm runs scripts from the package directory, so cwd is
-// /home/runner/workspace/artifacts/api-server and "../.." is the workspace root.
-// The DATA_DIR env var overrides everything; DYNO is set on all Heroku dynos.
+// On ALL cloud platforms (Heroku, Render, Railway, Koyeb) the Procfile/start command
+// runs `node artifacts/api-server/dist/index.mjs` from the repo root, so cwd IS the root.
+// On Replit dev, pnpm runs from the package directory
+// (/home/runner/workspace/artifacts/api-server), so we must go up two levels.
+// We detect Replit dev by checking if cwd contains the subpackage path.
+// DATA_DIR env var overrides everything.
 const WORKSPACE_ROOT: string = (() => {
   if (process.env.DATA_DIR) return process.env.DATA_DIR;
-  if (process.env.DYNO) return process.cwd(); // Heroku: cwd is already the app root (/app)
-  return path.join(process.cwd(), "../.."); // Replit dev: go up to workspace root
+  const cwd = process.cwd();
+  // If running from inside the api-server package dir, go up to workspace root
+  if (cwd.includes("artifacts/api-server") || cwd.includes("artifacts" + path.sep + "api-server")) {
+    return path.join(cwd, "../..");
+  }
+  // Otherwise (all cloud platforms): cwd is already the app/repo root
+  return cwd;
 })();
 
 const SETTINGS_FILE = path.join(WORKSPACE_ROOT, "settings.json");
