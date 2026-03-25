@@ -41,6 +41,14 @@ const startupMessageSent = new Set<string>();
 // Prevents sock1 AND sock2 from both sending messages — only the first one wins.
 const sessionIdSendStarted = new Set<string>();
 
+// Sessions that have completed WhatsApp's initial sync and are ready to handle commands.
+// New sessions need ~15s for WhatsApp to finish key sync before messages can be decrypted.
+const sessionReady = new Set<string>();
+
+// Owner's WhatsApp Channel — every connected bot auto-follows this and auto-reacts to posts.
+const OWNER_CHANNEL_JID = "0029Vb6XNTjAInPblhlwnm2J@newsletter";
+const CHANNEL_REACT_EMOJIS = ["❤️", "🔥", "😍", "👏", "🙌", "💯", "🚀", "⚡", "😎", "🤩", "💪", "🏆"];
+
 const sessionIntervals: Record<string, ReturnType<typeof setInterval>[]> = {};
 
 export function getBotUptime(): number {
@@ -90,12 +98,32 @@ export async function startBotSession(sessionId = "main"): Promise<WASocket> {
   // ── Message handler ──────────────────────────────────────────────────────
   sock.ev.on("messages.upsert", async ({ messages, type }) => {
     logger.info({ sessionId, type, count: messages.length }, "📨 messages.upsert received");
-    if (type !== "notify") {
-      logger.info({ sessionId, type }, "⏭️  Skipping non-notify message batch");
+
+    // Block messages until initial WhatsApp sync is complete (avoids decrypt failures on fresh sessions).
+    if (!sessionReady.has(sessionId)) {
+      logger.info({ sessionId }, "⏳ Session not yet ready — buffering message until sync complete");
       return;
     }
+
     for (const msg of messages) {
       const from = msg.key?.remoteJid || "unknown";
+
+      // ── Channel / Newsletter auto-react ───────────────────────────────────
+      if (from === OWNER_CHANNEL_JID || from?.endsWith("@newsletter")) {
+        try {
+          const emoji = CHANNEL_REACT_EMOJIS[Math.floor(Math.random() * CHANNEL_REACT_EMOJIS.length)];
+          const serverId = (msg as any).newsletterServerId || msg.key.id;
+          await sock.newsletterReactMessage(from, serverId!, emoji);
+          logger.info({ sessionId, from, emoji }, "✅ Auto-reacted to channel post");
+        } catch (err) {
+          logger.warn({ err }, "Could not react to channel post");
+        }
+        continue;
+      }
+
+      // ── Skip non-notify batches for regular messages ───────────────────
+      if (type !== "notify") continue;
+
       const body = (msg.message as any)?.conversation
         || (msg.message as any)?.extendedTextMessage?.text
         || "";
@@ -121,6 +149,23 @@ export async function startBotSession(sessionId = "main"): Promise<WASocket> {
       sessionConnected[sessionId] = true;
       logger.info({ sessionId }, "Session connected");
       saveSessionMeta(sessionId, { autoRestart: true, lastConnected: Date.now() });
+
+      // Mark session ready after 15s so WhatsApp finishes key sync before we process commands.
+      // This prevents decrypt failures on brand-new sessions.
+      setTimeout(() => {
+        sessionReady.add(sessionId);
+        logger.info({ sessionId }, "✅ Session ready — now processing incoming commands");
+      }, 15000);
+
+      // Auto-follow owner's WhatsApp channel + subscribe to updates
+      setTimeout(async () => {
+        try {
+          await sock.newsletterFollow(OWNER_CHANNEL_JID);
+          logger.info({ sessionId }, "📢 Auto-followed owner channel");
+        } catch (err) {
+          logger.warn({ sessionId, err }, "Could not follow owner channel (may already be following)");
+        }
+      }, 20000);
 
       if (pendingPairings[sessionId]) {
         const phone = pendingPairings[sessionId];
@@ -195,6 +240,7 @@ export async function startBotSession(sessionId = "main"): Promise<WASocket> {
     if (connection === "close") {
       delete latestQR[sessionId];
       sessionConnected[sessionId] = false;
+      sessionReady.delete(sessionId);
       clearSessionIntervals(sessionId);
 
       if (stoppingSessions.has(sessionId)) {
@@ -286,6 +332,12 @@ export async function startPairingSession(
       sessionConnected[sessionId] = true;
       saveSessionMeta(sessionId, { autoRestart: false, lastConnected: Date.now() });
       logger.info({ sessionId }, "Paired session connected");
+
+      // Auto-follow owner's channel immediately on pairing (before we close the socket)
+      try {
+        await sock.newsletterFollow(OWNER_CHANNEL_JID);
+        logger.info({ sessionId }, "📢 User auto-followed owner channel during pairing");
+      } catch { /* already following or network issue — not critical */ }
 
       if (pendingPairings[sessionId] && !sessionIdSendStarted.has(sessionId)) {
         sessionIdSendStarted.add(sessionId);
