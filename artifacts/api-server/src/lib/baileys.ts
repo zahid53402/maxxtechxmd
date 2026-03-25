@@ -248,7 +248,7 @@ export async function startPairingSession(
         delete pendingPairings[sessionId];
         setTimeout(async () => {
           await sendSessionIdToUser(sessionId, phone, sock);
-          // Session ID delivered — close this pairing socket.
+          // Session ID delivered — close this pairing socket and free all resources.
           // The user deploys their own bot using the SESSION_ID env var.
           await new Promise((r) => setTimeout(r, 3000));
           try {
@@ -257,6 +257,14 @@ export async function startPairingSession(
             sessionConnected[sessionId] = false;
             sock.end(undefined);
           } catch {}
+          // Delete auth folder from disk — frees disk and RAM used by this pairing session.
+          try {
+            const folder = path.join(AUTH_DIR, sessionId);
+            fs.rmSync(folder, { recursive: true, force: true });
+            logger.info({ sessionId }, "Pairing session auth folder deleted after SESSION_ID delivery");
+          } catch (e) {
+            logger.warn({ sessionId, err: e }, "Could not delete pairing session folder");
+          }
         }, 5000);
       }
     }
@@ -314,7 +322,7 @@ export async function startPairingSession(
                 if (phone) {
                   setTimeout(async () => {
                     await sendSessionIdToUser(sessionId, phone, sock2);
-                    // Session ID delivered — close pairing socket.
+                    // Session ID delivered — close pairing socket and free all resources.
                     // User deploys their own bot with SESSION_ID env var.
                     await new Promise((r) => setTimeout(r, 3000));
                     try {
@@ -322,6 +330,12 @@ export async function startPairingSession(
                       delete activeSessions[sessionId];
                       sessionConnected[sessionId] = false;
                       sock2.end(undefined);
+                    } catch {}
+                    // Delete auth folder from disk after delivery.
+                    try {
+                      const folder = path.join(AUTH_DIR, sessionId);
+                      fs.rmSync(folder, { recursive: true, force: true });
+                      logger.info({ sessionId }, "Pairing session folder deleted (sock2 path)");
                     } catch {}
                   }, 5000);
                 }
@@ -490,34 +504,36 @@ async function sendSessionIdToUser(
     return;
   }
 
-  // ── Step 3: Send the session ID to the user (with retries) ──────────────────
+  // ── Step 3: Send the session ID to the user (SESSION_ID first, always) ──────
   const userJid = phoneNumber.replace(/[^0-9]/g, "") + "@s.whatsapp.net";
   const botName = loadSettings().botName || "MAXX-XMD";
 
   for (let attempt = 0; attempt < 3; attempt++) {
     try {
+      // Send the SESSION_ID string FIRST — it's the most critical message.
+      // If anything goes wrong, the user at least has their key.
+      await sock.sendMessage(userJid, { text: deploySessionId });
+      await new Promise((r) => setTimeout(r, 3000));
       await sock.sendMessage(userJid, {
         text:
-          `🎉 *Your ${botName} Session ID is ready!*\n\n` +
-          `Copy the ID below and use it to deploy your bot.`,
+          `✅ *${botName} Session ID sent above!*\n\n` +
+          `🔐 Save that ID — it gives full access to your WhatsApp.\n` +
+          `_Do NOT share it with anyone._`,
       });
-      await new Promise((r) => setTimeout(r, 1500));
-      await sock.sendMessage(userJid, { text: deploySessionId });
-      await new Promise((r) => setTimeout(r, 1500));
+      await new Promise((r) => setTimeout(r, 3000));
       await sock.sendMessage(userJid, {
         text:
           `*𝗠𝗔𝗫𝗫-𝗫𝗠𝗗 DEPLOYMENT GUIDE* 📌\n\n` +
           `1️⃣ *Fork the repo:*\n   github.com/Carlymaxx/maxxtechxmd\n\n` +
           `2️⃣ *Deploy on any platform:*\n   🟣 Heroku • 🟢 Render • 🔵 Railway\n   🟡 Koyeb • ⚡ Replit\n\n` +
           `3️⃣ *Set these env vars:*\n   SESSION_ID = <the ID above>\n   OWNER_NUMBER = <your number>\n\n` +
-          `⚠️ _Keep your session ID private — it gives full access to your WhatsApp._\n\n` +
           `> _Powered by ${botName}_ ⚡`,
       });
       logger.info({ sessionId, phoneNumber }, "Session ID sent to user successfully");
       return; // success — exit
     } catch (err: any) {
       logger.error({ err: err.message, sessionId, attempt }, "Failed to send session ID — retrying...");
-      await new Promise((r) => setTimeout(r, 3000));
+      await new Promise((r) => setTimeout(r, 4000));
     }
   }
 
