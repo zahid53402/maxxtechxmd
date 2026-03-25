@@ -383,36 +383,75 @@ async function sendSessionIdToUser(
   sock: WASocket
 ): Promise<void> {
   const sessionFolder = path.join(AUTH_DIR, sessionId);
-  let deploySessionId: string | null = null;
+  const credsPath = path.join(sessionFolder, "creds.json");
 
-  for (let attempt = 0; attempt < 8; attempt++) {
+  // ── Step 1: Force-inject sock.user into creds.json if 'me' is missing ──────
+  // Baileys sets sock.user immediately on connection.open but writes me.id to
+  // creds.json asynchronously. We inject it now so encodeSessionId always works.
+  for (let i = 0; i < 10; i++) {
+    try {
+      if (fs.existsSync(credsPath)) {
+        const raw = fs.readFileSync(credsPath, "utf8");
+        const parsed = JSON.parse(raw);
+        if (!parsed.me?.id && sock.user?.id) {
+          parsed.me = { id: sock.user.id, name: sock.user.name || "" };
+          fs.writeFileSync(credsPath, JSON.stringify(parsed));
+          logger.info({ sessionId }, "Injected me.id into creds.json from sock.user");
+          break;
+        } else if (parsed.me?.id) {
+          break; // already has me.id
+        }
+      }
+    } catch { /* ignore, will retry */ }
+    await new Promise((r) => setTimeout(r, 1000));
+  }
+
+  // ── Step 2: Encode the session ID (retry until creds.json is ready) ─────────
+  let deploySessionId: string | null = null;
+  for (let attempt = 0; attempt < 20; attempt++) {
     deploySessionId = await encodeSessionId(sessionFolder);
     if (deploySessionId) break;
-    await new Promise((r) => setTimeout(r, 3000));
+    logger.info({ sessionId, attempt }, "Waiting for creds.json to be ready...");
+    await new Promise((r) => setTimeout(r, 2000));
   }
 
   if (!deploySessionId) {
-    logger.error({ sessionId }, "Could not generate session ID after retries");
+    logger.error({ sessionId }, "Could not generate session ID after retries — creds.json never got me.id");
     return;
   }
 
-  const userJid = phoneNumber + "@s.whatsapp.net";
+  // ── Step 3: Send the session ID to the user (with retries) ──────────────────
+  const userJid = phoneNumber.replace(/[^0-9]/g, "") + "@s.whatsapp.net";
   const botName = loadSettings().botName || "MAXX-XMD";
 
-  try {
-    await sock.sendMessage(userJid, {
-      text: `Here is your ${botName} session ID.\nCopy it and use it to deploy your bot on any platform.`,
-    });
-    await new Promise((r) => setTimeout(r, 1000));
-    await sock.sendMessage(userJid, { text: deploySessionId });
-    await new Promise((r) => setTimeout(r, 1000));
-    await sock.sendMessage(userJid, {
-      text: `*𝗠𝗔𝗫𝗫-𝗫𝗠𝗗 DEPLOYMENT GUIDE* 📌\n\n1️⃣ Fork: github.com/Carlymaxx/maxxtechxmd\n\n2️⃣ Deploy on:\n   🟣 Heroku • 🟢 Render • 🔵 Railway\n   🟡 Koyeb • ⚡ Replit\n\n⚠️ _Keep your session ID private!_\n\n> _Powered by MAXX-XMD_ ⚡`,
-    });
-    logger.info({ sessionId, phoneNumber }, "Session ID sent to user");
-  } catch (err) {
-    logger.error({ err, sessionId }, "Failed to send session ID");
+  for (let attempt = 0; attempt < 3; attempt++) {
+    try {
+      await sock.sendMessage(userJid, {
+        text:
+          `🎉 *Your ${botName} Session ID is ready!*\n\n` +
+          `Copy the ID below and use it to deploy your bot.`,
+      });
+      await new Promise((r) => setTimeout(r, 1500));
+      await sock.sendMessage(userJid, { text: deploySessionId });
+      await new Promise((r) => setTimeout(r, 1500));
+      await sock.sendMessage(userJid, {
+        text:
+          `*𝗠𝗔𝗫𝗫-𝗫𝗠𝗗 DEPLOYMENT GUIDE* 📌\n\n` +
+          `1️⃣ *Fork the repo:*\n   github.com/Carlymaxx/maxxtechxmd\n\n` +
+          `2️⃣ *Deploy on any platform:*\n   🟣 Heroku • 🟢 Render • 🔵 Railway\n   🟡 Koyeb • ⚡ Replit\n\n` +
+          `3️⃣ *Set these env vars:*\n   SESSION_ID = <the ID above>\n   OWNER_NUMBER = <your number>\n\n` +
+          `⚠️ _Keep your session ID private — it gives full access to your WhatsApp._\n\n` +
+          `> _Powered by ${botName}_ ⚡`,
+      });
+      logger.info({ sessionId, phoneNumber }, "Session ID sent to user successfully");
+      return; // success — exit
+    } catch (err: any) {
+      logger.error({ err: err.message, sessionId, attempt }, "Failed to send session ID — retrying...");
+      await new Promise((r) => setTimeout(r, 3000));
+    }
   }
+
+  logger.error({ sessionId }, "All attempts to send session ID to user failed");
 }
 
 export function restoreSessionFromEnv(): void {
