@@ -727,18 +727,21 @@ registerCommand({
   },
 });
 
-// ── Copilot helper — powers all AI commands ──────────────────────────────────
-async function askCopilot(question: string): Promise<{ answer: string; citations: string }> {
-  const res = await fetch(`https://eliteprotech-apis.zone.id/copilot?q=${encodeURIComponent(question)}`);
-  if (!res.ok) throw new Error(`API error ${res.status}`);
-  const data = await res.json() as any;
-  if (!data.success || !data.text) throw new Error("Empty response");
-  let citations = "";
-  if (data.citations?.length > 0) {
-    citations = "\n\n📚 *Sources:*\n" + (data.citations as any[]).slice(0, 3)
-      .map((c: any, i: number) => `${i + 1}. ${c.title}`).join("\n");
-  }
-  return { answer: data.text.trim(), citations };
+// ── Gemini helper — powers all AI commands ───────────────────────────────────
+async function askGemini(question: string, system = ""): Promise<{ answer: string; citations: string }> {
+  const messages: any[] = [];
+  if (system) messages.push({ role: "system", content: system });
+  messages.push({ role: "user", content: question });
+  const res = await fetch("https://text.pollinations.ai/", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ messages, model: "gemini", seed: Math.floor(Math.random() * 9999) }),
+    signal: AbortSignal.timeout(30000),
+  });
+  if (!res.ok) throw new Error(`Gemini error ${res.status}`);
+  const answer = (await res.text()).trim();
+  if (!answer) throw new Error("Empty response");
+  return { answer, citations: "" };
 }
 
 // ---- AI ----
@@ -746,7 +749,7 @@ registerCommand({
   name: "gpt",
   aliases: ["ai", "ask", "chatgpt", "copilot"],
   category: "AI",
-  description: "Chat with MAXX AI (powered by Copilot)",
+  description: "Chat with MAXX AI (powered by Gemini)",
   handler: async ({ args, reply }) => {
     const q = args.join(" ");
     if (!q) return reply(
@@ -754,7 +757,7 @@ registerCommand({
     );
     await reply(`╔══════════════════════╗\n║ 🤖 *MAXX AI* 🤖\n╚══════════════════════╝\n\n⏳ Thinking...`);
     try {
-      const { answer, citations } = await askCopilot(q);
+      const { answer, citations } = await askGemini(q);
       await reply(`╔══════════════════════╗\n║ 🤖 *MAXX AI* 🤖\n╚══════════════════════╝\n\n❓ *${q}*\n\n${answer}${citations}`);
     } catch (e: any) {
       await reply(`❌ AI Error: ${e.message || "Try again later"}`);
@@ -772,7 +775,7 @@ registerCommand({
     if (!q) return reply("❓ Usage: .gemini <question>");
     await reply(`🤖 *Gemini AI*\n\n⏳ Thinking...`);
     try {
-      const { answer, citations } = await askCopilot(q);
+      const { answer, citations } = await askGemini(q);
       await reply(`✨ *Gemini AI*\n\n❓ *${q}*\n\n${answer}${citations}`);
     } catch (e: any) {
       await reply(`❌ AI Error: ${e.message || "Try again later"}`);
@@ -804,7 +807,7 @@ for (const cmd of aiCommands) {
       if (!q) return reply(`❓ Usage: .${cmd.name} <input>`);
       await reply(`🤖 Processing...`);
       try {
-        const { answer, citations } = await askCopilot(cmd.prompt(q));
+        const { answer, citations } = await askGemini(cmd.prompt(q));
         await reply(`🤖 *${cmd.name.toUpperCase()}*\n\n${answer}${citations}`);
       } catch (e: any) {
         await reply(`❌ AI Error: ${e.message || "Try again later"}`);
@@ -1263,12 +1266,20 @@ export async function handleMessage(sock: WASocket, msg: WAMessage) {
       if (q) {
         sock.sendPresenceUpdate("composing", from).catch(() => {});
 
-        // ── Helper: try eliteprotech ChatGPT (primary AI) ──────────────────
+        // ── Helper: Gemini AI (primary chatbot) ────────────────────────────
         async function tryElite(question: string): Promise<string> {
-          const res = await fetch(`https://eliteprotech-apis.zone.id/chatgpt?prompt=${encodeURIComponent(question)}`, { signal: AbortSignal.timeout(8000) });
+          const messages = [
+            { role: "system", content: "You are MAXX-XMD, a helpful and friendly WhatsApp bot assistant. Keep responses concise and conversational." },
+            { role: "user", content: question },
+          ];
+          const res = await fetch("https://text.pollinations.ai/", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ messages, model: "gemini", seed: Math.floor(Math.random() * 9999) }),
+            signal: AbortSignal.timeout(20000),
+          });
           if (!res.ok) throw new Error("http " + res.status);
-          const d = await res.json() as any;
-          const txt = d.response || d.answer || d.text || d.message || d.result || "";
+          const txt = (await res.text()).trim();
           if (!txt) throw new Error("empty");
           return txt;
         }
