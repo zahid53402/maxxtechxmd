@@ -11,6 +11,7 @@ import { AUTH_DIR, ensureAuthDir } from "../lib/botState.js";
 import {
   activeSessions,
   sessionConnected,
+  sessionIdCache,
   startPairingSession,
 } from "../lib/baileys.js";
 import { logger } from "../lib/logger.js";
@@ -133,16 +134,28 @@ router.get("/status/:sessionId", (req, res) => {
   const { sessionId } = req.params;
   ensureAuthDir();
 
-  // Only trust the live socket event — NOT file existence.
-  // creds.json is written immediately on socket creation (key generation),
-  // so file existence alone does NOT mean the account is linked.
-  const connected = !!sessionConnected[sessionId];
+  // Check live socket first
+  const liveConnected = !!sessionConnected[sessionId];
 
+  // Try to get SESSION_ID: first from in-memory cache (survives auth folder deletion),
+  // then from disk (for the window before cache is populated).
   let deploySessionId: string | null = null;
-  if (connected) {
+
+  // 1. Memory cache — always available once sendSessionIdToUser runs
+  const cached = sessionIdCache.get(sessionId);
+  if (cached) {
+    deploySessionId = cached.encodedId;
+  }
+
+  // 2. Disk fallback — for the ~5-10s window before sendSessionIdToUser fires
+  if (!deploySessionId && liveConnected) {
     const sessionFolder = path.join(AUTH_DIR, sessionId);
     deploySessionId = encodeSessionIdSync(sessionFolder);
   }
+
+  // Report as "connected" if the socket is live OR if we have a cached SESSION_ID
+  // (the socket may have been closed after delivery but the user still needs to copy the key)
+  const connected = liveConnected || !!deploySessionId;
 
   const data = GetPairingStatusResponse.parse({
     sessionId,
